@@ -1,0 +1,27 @@
+# Apache configuration for MoMo payment integration
+RewriteEngine On
+
+# Ensure proper handling of MoMo redirects
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Handle MoMo success page
+RewriteRule ^momo_success\.php$ momo_success.php [L]
+
+# Handle MoMo IPN
+RewriteRule ^momo_ipn\.php$ momo_ipn.php [L]
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# PHP settings
+<IfModule mod_php.c>
+    php_value max_execution_time 30
+    php_value memory_limit 128M
+    php_value post_max_size 8M
+    php_value upload_max_filesize 8M
+</IfModule>

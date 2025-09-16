@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'includes/db.php';
+require_once 'includes/db';
 
 // Kiểm tra đăng nhập
 if (!isset($_SESSION['user_id'])) {
@@ -10,8 +10,14 @@ if (!isset($_SESSION['user_id'])) {
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['room_id'])) {
     $user_id = $_SESSION['user_id'];
-    $room_id = $_POST['room_id'];
+    $room_id = (int) $_POST['room_id'];
     $created_at = date('Y-m-d H:i:s');
+    
+    if (!is_numeric($room_id) || $room_id <= 0) {
+        $_SESSION['error_message'] = "Dữ liệu không hợp lệ.";
+        header('Location: cart.php');
+        exit();
+    }
     
     // Kiểm tra xem phòng đã có trong giỏ hàng chưa
     $check_sql = "SELECT id FROM carts WHERE user_id = ? AND room_id = ?";
@@ -36,6 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['room_id'])) {
     }
 }
 
-header('Location: index.php');
+header('Location: cart.php');
 exit();
 ?>

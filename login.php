@@ -1,6 +1,6 @@
 <?php
-session_start();
-require_once 'includes/db.php';
+$page_title = "Đăng nhập";
+require_once 'includes/header.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'];
@@ -26,31 +26,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         exit();
     } else {
         $error = "Tên đăng nhập hoặc mật khẩu không đúng.";
-        var_dump($username);
-        var_dump($password);
-
     }
 }
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Đăng nhập</title>
-</head>
-<body>
-    <h2>Đăng nhập</h2>
-    <?php if (isset($_SESSION['success_message'])): ?>
-        <p style="color:green;"><?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?></p>
-    <?php endif; ?>
-    <?php if (isset($error)): ?>
-        <p style="color:red;"><?php echo $error; ?></p>
-    <?php endif; ?>
-    <form action="login.php" method="POST">
-        Tên đăng nhập: <input type="text" name="username" required><br>
-        Mật khẩu: <input type="password" name="password" required><br>
-        <button type="submit">Đăng nhập</button>
-    </form>
-    <p>Chưa có tài khoản? <a href="register.php">Đăng ký</a></p>
-</body>
-</html>
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <h1><i class="fas fa-sign-in-alt"></i> Đăng nhập</h1>
+            <p>Đăng nhập vào hệ thống quản lý motel</p>
+        </div>
+        
+        <?php if (isset($_SESSION['success_message'])): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i> <?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?>
+            </div>
+        <?php endif; ?>
+        
+        <?php if (isset($error)): ?>
+            <div class="alert alert-error">
+                <i class="fas fa-exclamation-circle"></i> <?php echo $error; ?>
+            </div>
+        <?php endif; ?>
+        
+        <form action="login.php" method="POST">
+            <div class="form-group">
+                <label for="username"><i class="fas fa-user"></i> Tên đăng nhập</label>
+                <input type="text" id="username" name="username" class="form-control" required placeholder="Nhập tên đăng nhập">
+            </div>
+            
+            <div class="form-group">
+                <label for="password"><i class="fas fa-lock"></i> Mật khẩu</label>
+                <input type="password" id="password" name="password" class="form-control" required placeholder="Nhập mật khẩu">
+            </div>
+            
+            <button type="submit" class="btn" style="width: 100%;">
+                <i class="fas fa-sign-in-alt"></i> Đăng nhập
+            </button>
+        </form>
+        
+        <div class="auth-links">
+            <p>Chưa có tài khoản? <a href="register.php">Đăng ký ngay</a></p>
+        </div>
+    </div>
+</div>
+
+<?php require_once 'includes/footer.php'; ?>

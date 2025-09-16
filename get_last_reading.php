@@ -1,5 +1,5 @@
 <?php
-require_once 'includes/db.php';
+require_once 'includes/db';
 
 if (isset($_GET['room_id'])) {
     $room_id = $_GET['room_id'];

@@ -1,6 +1,6 @@
 <?php
-session_start();
-require_once 'includes/db.php';
+$page_title = "Giỏ hàng";
+require_once 'includes/header.php';
 
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
@@ -15,47 +15,71 @@ $stmt->execute();
 $result = $stmt->get_result();
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Giỏ hàng của bạn</title>
-</head>
-<body>
-    <h2>Giỏ hàng của bạn</h2>
-    <?php if (isset($_SESSION['success_message'])): ?>
-        <p style="color: green;"><?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?></p>
-    <?php endif; ?>
-    <?php if (isset($_SESSION['error_message'])): ?>
-        <p style="color: red;"><?php echo $_SESSION['error_message']; unset($_SESSION['error_message']); ?></p>
-    <?php endif; ?>
+<div class="card">
+    <h2><i class="fas fa-shopping-cart"></i> Giỏ hàng của bạn</h2>
+    <p>Xem lại các phòng bạn đã chọn và tiến hành thanh toán.</p>
+</div>
 
-    <?php if ($result->num_rows > 0): ?>
-        <form action="checkout.php" method="POST">
-            <ul>
-                <?php while($row = $result->fetch_assoc()): ?>
-                    <li>
-                        Phòng: <?php echo htmlspecialchars($row['room_number']); ?> - Giá: <?php echo htmlspecialchars($row['rent_price']); ?> VND
-                        <p>Mô tả: <?php echo htmlspecialchars($row['description']); ?></p>
-                        <input type="hidden" name="room_id" value="<?php echo $row['id']; ?>">
-                    </li>
-                <?php endwhile; ?>
-            </ul>
-            
-            <p>Chọn ngày nhận phòng và thanh toán:</p>
-            Ngày nhận phòng: <input type="date" name="start_date" required><br>
-            
-            <label for="contract_duration">Thời hạn hợp đồng:</label>
-            <select name="contract_duration" id="contract_duration" required>
-                <option value="3">3 tháng</option>
-                <option value="6">6 tháng</option>
-                <option value="12">12 tháng</option>
-            </select><br><br>
-            
-            <button type="submit">Tiến hành thanh toán</button>
-        </form>
-    <?php else: ?>
-        <p>Giỏ hàng của bạn trống.</p>
-    <?php endif; ?>
-    <p><a href="index.php">Tiếp tục chọn phòng</a></p>
-</body>
-</html>
+<?php if (isset($_SESSION['success_message'])): ?>
+    <div class="alert alert-success">
+        <i class="fas fa-check-circle"></i> <?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?>
+    </div>
+<?php endif; ?>
+
+<?php if (isset($_SESSION['error_message'])): ?>
+    <div class="alert alert-error">
+        <i class="fas fa-exclamation-circle"></i> <?php echo $_SESSION['error_message']; unset($_SESSION['error_message']); ?>
+    </div>
+<?php endif; ?>
+
+<?php if ($result->num_rows > 0): ?>
+    <div class="card">
+        <h3><i class="fas fa-list"></i> Phòng đã chọn</h3>
+        <div class="room-grid">
+            <?php while($row = $result->fetch_assoc()): ?>
+                <?php $reservation_fee = (int) round($row['rent_price'] * 0.10); ?>
+                <div class="room-card">
+                    <div class="room-number">Phòng <?php echo htmlspecialchars($row['room_number']); ?></div>
+                    <div class="room-price"><?php echo number_format($row['rent_price']); ?> VND/tháng</div>
+                    <div class="room-description"><?php echo htmlspecialchars($row['description']); ?></div>
+                    <div style="display: flex; gap: .5rem; margin-top: .75rem;">
+                        <form action="checkout.php" method="POST" style="flex: 1;">
+                            <input type="hidden" name="room_id" value="<?php echo (int)$row['id']; ?>">
+                            <input type="hidden" name="fee_amount" value="<?php echo $reservation_fee; ?>">
+                            <button type="submit" class="btn btn-success" style="width: 100%;">
+                                <i class="fas fa-credit-card"></i> Giữ chỗ (<?= number_format($reservation_fee) ?> VND)
+                            </button>
+                        </form>
+                        <form action="remove_from_cart.php" method="POST" onsubmit="return confirm('Xóa phòng này khỏi giỏ?');">
+                            <input type="hidden" name="room_id" value="<?php echo (int)$row['id']; ?>">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            <?php endwhile; ?>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div style="display: flex; gap: 1rem;">
+            <a href="view_rooms.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
+                <i class="fas fa-plus"></i> Thêm phòng khác
+            </a>
+        </div>
+    </div>
+<?php else: ?>
+    <div class="card">
+        <div style="text-align: center; padding: 3rem; color: #666;">
+            <i class="fas fa-shopping-cart" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;"></i>
+            <h4>Giỏ hàng trống</h4>
+            <p>Bạn chưa chọn phòng nào. Hãy xem danh sách phòng trống và chọn phòng phù hợp.</p>
+            <a href="view_rooms.php" class="btn btn-success" style="margin-top: 1rem;">
+                <i class="fas fa-bed"></i> Xem phòng trống
+            </a>
+        </div>
+    </div>
+<?php endif; ?>
+
+<?php require_once 'includes/footer.php'; ?>
