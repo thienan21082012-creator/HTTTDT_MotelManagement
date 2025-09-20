@@ -81,7 +81,7 @@ while($room = $rooms_result->fetch_assoc()) {
             $mail->isSMTP();
             $mail->Host = 'smtp.gmail.com'; // Thay bằng SMTP Host của bạn
             $mail->SMTPAuth = true;
-            $mail->Username = 'thienan21082025@gmail.com'; // Thay bằng email của bạn
+            $mail->Username = 'email@gmail.com'; // Thay bằng email của bạn
             $mail->Password = 'mật khẩu ứng dụng'; // Thay bằng mật khẩu ứng dụng
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port = 465;
@@ -115,3 +115,4 @@ header('Location: dashboard.php');
 exit();
 
 ?>
+
