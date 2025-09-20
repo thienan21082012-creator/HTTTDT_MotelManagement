@@ -2,6 +2,13 @@
 session_start();
 require_once 'includes/db';
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require 'PHPMailer/src/Exception.php';
+require 'PHPMailer/src/PHPMailer.php';
+require 'PHPMailer/src/SMTP.php';
+
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'admin') {
     header('Location: login.php');
     exit();
@@ -33,20 +40,20 @@ while($room = $rooms_result->fetch_assoc()) {
     $room_id = $room['id'];
     $rent_amount = $room['rent_price'];
 
-    // Lấy user_id từ bảng payments
-    $user_sql = "SELECT user_id FROM payments WHERE room_id = ? AND payment_type = 'deposit' ORDER BY payment_date DESC LIMIT 1";
+    // Lấy user_id và email từ bảng payments và users
+    $user_sql = "SELECT u.id, u.email FROM users u JOIN payments p ON u.id = p.user_id WHERE p.room_id = ? AND p.payment_type = 'deposit' ORDER BY p.payment_date DESC LIMIT 1";
     $user_stmt = $conn->prepare($user_sql);
     $user_stmt->bind_param("i", $room_id);
     $user_stmt->execute();
     $user_result = $user_stmt->get_result();
-    
-    // Kiểm tra nếu không tìm thấy user_id, bỏ qua phòng này
+
     if ($user_result->num_rows == 0) {
-        continue; // Bỏ qua phòng này và chuyển sang phòng tiếp theo
+        continue;
     }
     
-    $user_id = $user_result->fetch_assoc()['user_id'];
-    
+    $user_data = $user_result->fetch_assoc();
+    $user_id = $user_data['id'];
+    $user_email = $user_data['email'];
     // Lấy chỉ số điện gần nhất để tính tiền
     $elec_sql = "SELECT old_reading, new_reading FROM electricity_readings WHERE room_id = ? ORDER BY reading_date DESC LIMIT 1";
     $elec_stmt = $conn->prepare($elec_sql);
@@ -55,7 +62,6 @@ while($room = $rooms_result->fetch_assoc()) {
     $elec_result = $elec_stmt->get_result();
     $elec_data = $elec_result->fetch_assoc();
     
-    // Sửa lỗi ở đây: Kiểm tra nếu có dữ liệu chỉ số điện
     $consumed_units = ($elec_data) ? ($elec_data['new_reading'] - $elec_data['old_reading']) : 0;
     $electricity_amount = $consumed_units * $electricity_price_per_unit;
 
@@ -68,9 +74,43 @@ while($room = $rooms_result->fetch_assoc()) {
     $insert_bill_stmt = $conn->prepare($insert_bill_sql);
     $insert_bill_stmt->bind_param("iiiidddds", $user_id, $room_id, $current_month, $current_year, $rent_amount, $electricity_amount, $water_amount, $service_fee, $total_amount);
     $insert_bill_stmt->execute();
-}
 
-$_SESSION['success_message'] = "Đã tạo hóa đơn cho tháng " . $current_month . " thành công.";
+    if (!empty($user_email)) {
+        try {
+            $mail = new PHPMailer(true);
+            $mail->isSMTP();
+            $mail->Host = 'smtp.gmail.com'; // Thay bằng SMTP Host của bạn
+            $mail->SMTPAuth = true;
+            $mail->Username = 'thienan21082025@gmail.com'; // Thay bằng email của bạn
+            $mail->Password = 'ppjjwpxhbpdmgyap'; // Thay bằng mật khẩu ứng dụng
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port = 465;
+            $mail->CharSet = 'UTF-8';
+
+            $mail->setFrom('thienan21082025@gmail.com', 'He thong Quan ly Nha Tro');
+            $mail->addAddress($user_email);
+            
+            $mail->isHTML(true);
+            $mail->Subject = 'Thong bao hoa don tien nha thang ' . $current_month;
+            
+            $mail_body = "<h3>Kinh gui Khach hang,</h3>";
+            $mail_body .= "<p>He thong thong bao da co hoa don tien nha thang " . $current_month . " cho phong " . $room_id . "</p>";
+            $mail_body .= "<p>Vui long dang nhap de xem chi tiet va thanh toan.</p>";
+            $mail_body .= "<p>Tong so tien can thanh toan: <strong>" . number_format($total_amount) . " VND</strong></p>";
+            $mail_body .= "<p>Tran trong,</p>";
+            $mail_body .= "<p>Ban Quan ly.</p>";
+            
+            $mail->Body = $mail_body;
+            $mail->send();
+            echo "Đã gửi mail $user_email";
+        } catch (Exception $e) {
+            // Có thể ghi log lỗi ở đây
+            echo "Message could not be sent. Mailer Error: {$mail->ErrorInfo}";
+        }
+    }
+} // Corrected closing brace for the while loop
+
+$_SESSION['success_message'] = "Đã tạo hóa đơn và gửi email thông báo thành công.";
 header('Location: dashboard.php');
 exit();
 ?>

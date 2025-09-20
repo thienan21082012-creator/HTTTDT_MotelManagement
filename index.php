@@ -9,6 +9,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
+$full_name = $_SESSION['full_name'];
 
 // Truy vấn để tìm phòng đã được đặt chỗ (trạng thái 'reserved')
 $sql_res = "SELECT r.* FROM reservations res JOIN rooms r ON res.room_id = r.id WHERE res.user_id = ? AND r.status = 'reserved'";
@@ -43,7 +44,7 @@ $bills_result = $stmt_bills->get_result();
 ?>
 
 <div class="card">
-    <h2><i class="fas fa-home"></i> Chào mừng, <?php echo htmlspecialchars($_SESSION['username']); ?>!</h2>
+    <h2><i class="fas fa-home"></i> Chào mừng, <?php echo htmlspecialchars($_SESSION['full_name']); ?>!</h2>
     <p>Đây là trang quản lý cá nhân của bạn trong hệ thống motel.</p>
 </div>
 

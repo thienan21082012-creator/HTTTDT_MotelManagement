@@ -33,7 +33,7 @@ if ($res_row && isset($res_row['fee_amount'])) {
 }
 
 $monthly_rent = (float)$room['rent_price'];
-$deposit_amount = max($monthly_rent - $reservation_fee_paid, 0);
+$deposit_amount = max($monthly_rent*2 - $reservation_fee_paid, 0);
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['room_id']) && isset($_POST['deposit_amount'])) {
     // Validate input
@@ -123,9 +123,10 @@ require_once 'includes/header.php';
 <div class="card">
     <h3><i class="fas fa-credit-card"></i> Thông tin thanh toán</h3>
     <div style="background: rgba(255, 193, 7, 0.1); padding: 1.5rem; border-radius: 15px; border-left: 4px solid #ffc107;">
-        <p><strong><i class="fas fa-money-bill-wave"></i> Tiền thuê 1 tháng:</strong> <?php echo number_format($monthly_rent); ?> VND</p>
+        <p><strong><i class="fas fa-money-bill-wave"></i> Tiền thuê tháng đầu:</strong> <?php echo number_format($monthly_rent); ?> VND</p>
+        <p><strong><i class="fa-solid fa-file-signature"></i> Tiền cọc:</strong> <?php echo number_format($monthly_rent); ?> VND</p>
         <p><strong><i class="fas fa-receipt"></i> Đã thanh toán giữ chỗ:</strong> -<?php echo number_format($reservation_fee_paid); ?> VND</p>
-        <p><strong><i class="fas fa-hand-holding-usd"></i> Tiền cọc còn lại:</strong> <?php echo number_format($deposit_amount); ?> VND</p>
+        <p><strong><i class="fas fa-hand-holding-usd"></i> Tiền còn lại phải thanh toán:</strong> <?php echo number_format($deposit_amount); ?> VND</p>
         <p style="margin-top: 1rem; color: #666;">
             <i class="fas fa-info-circle"></i> 
             Sau khi thanh toán thành công, bạn sẽ chính thức thuê phòng và có thể bắt đầu sử dụng.
