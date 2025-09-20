@@ -82,7 +82,7 @@ while($room = $rooms_result->fetch_assoc()) {
             $mail->Host = 'smtp.gmail.com'; // Thay bằng SMTP Host của bạn
             $mail->SMTPAuth = true;
             $mail->Username = 'thienan21082025@gmail.com'; // Thay bằng email của bạn
-            $mail->Password = 'ppjjwpxhbpdmgyap'; // Thay bằng mật khẩu ứng dụng
+            $mail->Password = 'mật khẩu ứng dụng'; // Thay bằng mật khẩu ứng dụng
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port = 465;
             $mail->CharSet = 'UTF-8';
@@ -113,4 +113,5 @@ while($room = $rooms_result->fetch_assoc()) {
 $_SESSION['success_message'] = "Đã tạo hóa đơn và gửi email thông báo thành công.";
 header('Location: dashboard.php');
 exit();
+
 ?>
