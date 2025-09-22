@@ -189,7 +189,7 @@ if ($filter_month && $filter_year) {
                     <?php while($b = $bills_admin_result->fetch_assoc()): ?>
                         <tr>
                             <td><?php echo htmlspecialchars($b['username']); ?></td>
-                            <td><?php echo htmlspecialchars($b['room_number']); ?></td>
+                            <td><?php echo htmlspecialchars($b['room_number']) . '<br>' . htmlspecialchars(number_format($b['person'])) . ' người' ; ?></td>
                             <td><?php echo htmlspecialchars($b['billing_month'] . '/' . $b['billing_year']); ?></td>
                             <td><?php echo number_format($b['rent_amount']); ?> VND</td>
                             <td><?php echo number_format($b['electricity_amount']); ?> VND</td>
@@ -255,6 +255,10 @@ if ($filter_month && $filter_year) {
             <div class="form-group">
                 <label for="rent_price"><i class="fas fa-money-bill-wave"></i> Giá thuê (VND)</label>
                 <input type="number" id="rent_price" name="rent_price" class="form-control" step="1000" required placeholder="VD: 2000000">
+            </div>
+            <div class="form-group">
+                <label for="num_people"><i class="fa-solid fa-users"></i> Số người (Người)</label>
+                <input type="number" id="num_people" name="num_people" class="form-control" step="1" required placeholder="VD: 1">
             </div>
         </div>
         <div class="form-group">

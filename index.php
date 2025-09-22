@@ -86,7 +86,7 @@ $bills_result = $stmt_bills->get_result();
                         <th><i class="fas fa-bed"></i> Phòng</th>
                         <th><i class="fas fa-calendar"></i> Tháng</th>
                         <th><i class="fas fa-money-bill-wave"></i> Tiền thuê</th>
-                        <th><i class="fas fa-bolt"></i> Số điện</th>
+                        <th><i class="fa-regular fa-meter"></i> Số điện</th>
                         <th><i class="fas fa-bolt"></i> Tiền điện</th>
                         <th><i class="fas fa-tint"></i> Tiền nước</th>
                         <th><i class="fas fa-cogs"></i> Phí dịch vụ</th>
@@ -98,7 +98,7 @@ $bills_result = $stmt_bills->get_result();
                 <tbody>
                 <?php while($bill = $bills_result->fetch_assoc()): ?>
                     <tr>
-                        <td><strong><?php echo htmlspecialchars($bill['room_number']); ?></strong></td>
+                        <td><strong><?php echo htmlspecialchars($bill['room_number']) . '<br>' . htmlspecialchars(number_format($bill['person'])) . ' người' ; ?></strong></td>
                         <td><?php echo htmlspecialchars($bill['billing_month'] . '/' . $bill['billing_year']); ?></td>
                         <td><?php echo number_format($bill['rent_amount']); ?> VND</td>
                         <td>
@@ -111,6 +111,7 @@ $bills_result = $stmt_bills->get_result();
                             ?>
                         </td>
                         <td><?php echo number_format($bill['electricity_amount']); ?> VND</td>
+                        <!-- <td><?php echo number_format($bill['person']); ?> Người</td> -->
                         <td><?php echo number_format($bill['water_amount']); ?> VND</td>
                         <td><?php echo number_format($bill['service_fee']); ?> VND</td>
                         <td><strong><?php echo number_format($bill['total_amount']); ?> VND</strong></td>

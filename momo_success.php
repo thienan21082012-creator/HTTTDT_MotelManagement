@@ -197,10 +197,15 @@ try {
             <a href="checkout_deposit.php?room_id=<?php echo $roomId; ?>" class="btn btn-success" style="flex: 1; text-align: center;">
                 <i class="fas fa-credit-card"></i> Thanh toán tiền cọc
             </a>
+        <?php elseif ($paymentType === 'bill'): ?>
+            <a href="index.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
+                <i class="fas fa-times"></i> Hủy thanh toán
+            </a>
         <?php else: ?>
             <a href="cancel_reservation.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
                 <i class="fas fa-times"></i> Hủy giữ chỗ
             </a>
+
         <?php endif; ?>
     </div>
 </div>

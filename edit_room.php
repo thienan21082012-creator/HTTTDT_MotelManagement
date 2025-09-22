@@ -15,7 +15,7 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 $room_id = $_GET['id'];
 
 // Lấy thông tin phòng và thông tin hợp đồng
-$sql = "SELECT r.*, COALESCE(r.contract_duration, p.contract_duration) AS contract_duration, COALESCE(r.start_date, p.start_date) AS start_date
+$sql = "SELECT r.*, p.contract_duration, p.start_date
         FROM rooms r
         LEFT JOIN payments p ON r.id = p.room_id AND p.payment_type = 'deposit'
         WHERE r.id = ?";
@@ -35,13 +35,12 @@ if (!$room) {
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $room_number = trim($_POST['room_number']);
     $description = trim($_POST['description']);
-    // Remove dots and commas from price, then convert to float
     $rent_price = floatval(str_replace(['.', ','], '', $_POST['rent_price']));
     $status = $_POST['status'];
     $contract_duration = !empty($_POST['contract_duration']) ? intval($_POST['contract_duration']) : null;
     $start_date = !empty($_POST['start_date']) ? $_POST['start_date'] : null;
+    $num_people = !empty($_POST['num_people']) ? intval($_POST['num_people']) : null;
     
-    // Validation
     $errors = [];
     if (empty($room_number)) {
         $errors[] = "Số phòng không được để trống.";
@@ -49,103 +48,56 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($rent_price <= 0) {
         $errors[] = "Giá thuê phải lớn hơn 0.";
     }
-    // Validation will be handled in the status-specific logic below
+    if ($num_people && $num_people <= 0) {
+        $errors[] = "Số người phải lớn hơn 0.";
+    }
     
     if (empty($errors)) {
-        // Cập nhật thông tin cơ bản của phòng
-        // Update base room info first
-        $update_sql = "UPDATE rooms SET room_number = ?, description = ?, rent_price = ?, status = ? WHERE id = ?";
-        $update_stmt = $conn->prepare($update_sql);
-        $update_stmt->bind_param("ssdsi", $room_number, $description, $rent_price, $status, $room_id);
+        // Cập nhật thông tin cơ bản của phòng trước
+        $update_room_sql = "UPDATE rooms SET room_number = ?, description = ?, rent_price = ?, num_people = ?, status = ? WHERE id = ?";
+        $update_room_stmt = $conn->prepare($update_room_sql);
+        $update_room_stmt->bind_param("sdsisi", $room_number, $description, $rent_price, $num_people, $status, $room_id);
+        $update_room_stmt->execute();
         
-        if ($update_stmt->execute()) {
-            // Xử lý logic dựa trên trạng thái mới
-            if ($status == 'available') {
-                // Clear contract info on room when returning to available
-                $clear_contract_sql = "UPDATE rooms SET contract_duration = NULL, start_date = NULL WHERE id = ?";
-                $clear_contract_stmt = $conn->prepare($clear_contract_sql);
-                $clear_contract_stmt->bind_param("i", $room_id);
-                $clear_contract_stmt->execute();
-                // Nếu phòng trở về trạng thái trống, xóa tất cả reservations và payments liên quan
-                $delete_reservations_sql = "DELETE FROM reservations WHERE room_id = ?";
-                $delete_reservations_stmt = $conn->prepare($delete_reservations_sql);
-                $delete_reservations_stmt->bind_param("i", $room_id);
-                $delete_reservations_stmt->execute();
-                
-                $delete_payments_sql = "DELETE FROM payments WHERE room_id = ? AND payment_type = 'deposit'";
-                $delete_payments_stmt = $conn->prepare($delete_payments_sql);
-                $delete_payments_stmt->bind_param("i", $room_id);
-                $delete_payments_stmt->execute();
-                
-            } elseif ($status == 'reserved') {
-                // Clear contract info on room when only reserved
-                $clear_contract_sql = "UPDATE rooms SET contract_duration = NULL, start_date = NULL WHERE id = ?";
-                $clear_contract_stmt = $conn->prepare($clear_contract_sql);
-                $clear_contract_stmt->bind_param("i", $room_id);
-                $clear_contract_stmt->execute();
-                // Nếu phòng được đặt thành "đã cọc" bởi admin (không có user cụ thể)
-                // Xóa các reservations cũ và không tạo mới (vì admin không chọn user)
-                $delete_reservations_sql = "DELETE FROM reservations WHERE room_id = ?";
-                $delete_reservations_stmt = $conn->prepare($delete_reservations_sql);
-                $delete_reservations_stmt->bind_param("i", $room_id);
-                $delete_reservations_stmt->execute();
-                
-            } elseif ($status == 'occupied') {
-                // Validate required fields for occupied status
-                if (empty($contract_duration) || empty($start_date)) {
-                    $errors[] = "Khi đặt phòng thành 'đã thuê', thời hạn hợp đồng và ngày nhận phòng là bắt buộc.";
-                } else {
-                    // Persist contract info directly on rooms
-                    $save_contract_sql = "UPDATE rooms SET contract_duration = ?, start_date = ? WHERE id = ?";
-                    $save_contract_stmt = $conn->prepare($save_contract_sql);
-                    $save_contract_stmt->bind_param("isi", $contract_duration, $start_date, $room_id);
-                    $save_contract_stmt->execute();
-
-                    // Check if there's an existing payment record for this room
-                    $check_payment_sql = "SELECT id, user_id FROM payments WHERE room_id = ? AND payment_type = 'deposit' LIMIT 1";
-                    $check_payment_stmt = $conn->prepare($check_payment_sql);
-                    $check_payment_stmt->bind_param("i", $room_id);
-                    $check_payment_stmt->execute();
-                    $payment_result = $check_payment_stmt->get_result();
-                    $existing_payment = $payment_result->fetch_assoc();
-                    
-                    if ($existing_payment) {
-                        // Update existing payment record with contract details
-                        $update_payment_sql = "UPDATE payments SET contract_duration = ?, start_date = ?, payment_status = 'completed' WHERE id = ?";
-                        $update_payment_stmt = $conn->prepare($update_payment_sql);
-                        $update_payment_stmt->bind_param("isi", $contract_duration, $start_date, $existing_payment['id']);
-                        $update_payment_stmt->execute();
-                        
-                        // If this was a user payment, delete the reservation
-                        if ($existing_payment['user_id'] > 0) {
-                            $delete_res_sql = "DELETE FROM reservations WHERE user_id = ? AND room_id = ?";
-                            $delete_res_stmt = $conn->prepare($delete_res_sql);
-                            $delete_res_stmt->bind_param("ii", $existing_payment['user_id'], $room_id);
-                            $delete_res_stmt->execute();
-                        }
-                    } else {
-                        // Create new payment record for admin-managed room
-                        // Use user_id = 0 to indicate this is admin-managed
-                        $insert_payment_sql = "INSERT INTO payments (user_id, room_id, start_date, contract_duration, total_amount, payment_status, payment_date, payment_type) VALUES (0, ?, ?, ?, ?, 'completed', NOW(), 'deposit')";
-                        $insert_payment_stmt = $conn->prepare($insert_payment_sql);
-                        $insert_payment_stmt->bind_param("isid", $room_id, $start_date, $contract_duration, $rent_price);
-                        $insert_payment_stmt->execute();
-                        
-                        // Clean up any existing reservations for this room
-                        $delete_res_sql = "DELETE FROM reservations WHERE room_id = ?";
-                        $delete_res_stmt = $conn->prepare($delete_res_sql);
-                        $delete_res_stmt->bind_param("i", $room_id);
-                        $delete_res_stmt->execute();
-                    }
-                }
+        if ($status === 'occupied' && ($room['status'] === 'available' || $room['status'] === 'reserved')) {
+            $user_id_from_res = null;
+            if($room['status'] === 'reserved'){
+                $sql_get_res_user = "SELECT user_id FROM reservations WHERE room_id = ?";
+                $stmt_get_res_user = $conn->prepare($sql_get_res_user);
+                $stmt_get_res_user->bind_param('i', $room_id);
+                $stmt_get_res_user->execute();
+                $user_id_from_res = $stmt_get_res_user->get_result()->fetch_assoc()['user_id'] ?? null;
             }
-            
-            $_SESSION['success_message'] = "Cập nhật phòng thành công.";
-            header('Location: dashboard.php');
-            exit();
-        } else {
-            $errors[] = "Có lỗi xảy ra khi cập nhật phòng.";
+    
+            $insert_payment_sql = "INSERT INTO payments (user_id, room_id, start_date, contract_duration, total_amount, payment_status, payment_date, payment_type) VALUES (?, ?, ?, ?, ?, 'completed', NOW(), 'deposit')";
+            $insert_payment_stmt = $conn->prepare($insert_payment_sql);
+            $insert_payment_stmt->bind_param("isid", $user_id_from_res ?? 0, $room_id, $start_date, $contract_duration, $rent_price);
+            $insert_payment_stmt->execute();
+    
+            if($user_id_from_res){
+                $delete_res_sql = "DELETE FROM reservations WHERE room_id = ? AND user_id = ?";
+                $delete_res_stmt = $conn->prepare($delete_res_sql);
+                $delete_res_stmt->bind_param("ii", $room_id, $user_id_from_res);
+                $delete_res_stmt->execute();
+            }
+    
+        } elseif ($status === 'available' && ($room['status'] === 'occupied' || $room['status'] === 'reserved')) {
+            $delete_payments_sql = "DELETE FROM payments WHERE room_id = ?";
+            $delete_payments_stmt = $conn->prepare($delete_payments_sql);
+            $delete_payments_stmt->bind_param("i", $room_id);
+            $delete_payments_stmt->execute();
+    
+            $delete_reservations_sql = "DELETE FROM reservations WHERE room_id = ?";
+            $delete_reservations_stmt = $conn->prepare($delete_reservations_sql);
+            $delete_reservations_stmt->bind_param("i", $room_id);
+            $delete_reservations_stmt->execute();
         }
+        
+        $_SESSION['success_message'] = "Cập nhật phòng thành công.";
+        header('Location: dashboard.php');
+        exit();
+    } else {
+        $errors[] = "Có lỗi xảy ra khi cập nhật phòng.";
     }
 }
 
@@ -231,17 +183,31 @@ include 'includes/header.php';
                 </select>
             </div>
             
-            <div class="form-group" id="contract_duration_group" style="<?php echo ($room['status'] == 'occupied') ? '' : 'display: none;'; ?>">
-                <label for="contract_duration">
-                    <i class="fas fa-calendar-alt"></i> Thời hạn hợp đồng
+            <div class="form-group">
+                <label for="num_people">
+                    <i class="fas fa-users"></i> Số người *
                 </label>
-                <select id="contract_duration" name="contract_duration" class="form-control">
-                    <option value="">-- Chọn thời hạn --</option>
-                    <option value="3" <?php echo ($room['contract_duration'] == 3) ? 'selected' : ''; ?>>3 tháng</option>
-                    <option value="6" <?php echo ($room['contract_duration'] == 6) ? 'selected' : ''; ?>>6 tháng</option>
-                    <option value="12" <?php echo ($room['contract_duration'] == 12) ? 'selected' : ''; ?>>12 tháng</option>
-                </select>
+                <input type="number" 
+                       id="num_people" 
+                       name="num_people" 
+                       class="form-control" 
+                       value="<?php echo htmlspecialchars($room['num_people']); ?>" 
+                       min="1"
+                       required
+                       placeholder="Nhập số người thuê">
             </div>
+        </div>
+        
+        <div class="form-group" id="contract_duration_group" style="<?php echo ($room['status'] == 'occupied') ? '' : 'display: none;'; ?>">
+            <label for="contract_duration">
+                <i class="fas fa-calendar-alt"></i> Thời hạn hợp đồng
+            </label>
+            <select id="contract_duration" name="contract_duration" class="form-control">
+                <option value="">-- Chọn thời hạn --</option>
+                <option value="3" <?php echo ($room['contract_duration'] == 3) ? 'selected' : ''; ?>>3 tháng</option>
+                <option value="6" <?php echo ($room['contract_duration'] == 6) ? 'selected' : ''; ?>>6 tháng</option>
+                <option value="12" <?php echo ($room['contract_duration'] == 12) ? 'selected' : ''; ?>>12 tháng</option>
+            </select>
         </div>
         
         <div class="form-group" id="start_date_group" style="<?php echo ($room['status'] == 'occupied') ? '' : 'display: none;'; ?>">
@@ -273,60 +239,52 @@ document.addEventListener('DOMContentLoaded', function() {
     const startDateGroup = document.getElementById('start_date_group');
     const contractDurationSelect = document.getElementById('contract_duration');
     const startDateInput = document.getElementById('start_date');
+    const numPeopleInput = document.getElementById('num_people');
     
-    // Toggle contract fields based on status
-    statusSelect.addEventListener('change', function() {
-        if (this.value === 'occupied') {
+    function toggleContractFields() {
+        if (statusSelect.value === 'occupied') {
             contractDurationGroup.style.display = 'block';
             startDateGroup.style.display = 'block';
             contractDurationSelect.required = true;
             startDateInput.required = true;
+            numPeopleInput.required = true;
         } else {
             contractDurationGroup.style.display = 'none';
             startDateGroup.style.display = 'none';
             contractDurationSelect.required = false;
             startDateInput.required = false;
-            contractDurationSelect.value = '';
-            startDateInput.value = '';
+            numPeopleInput.required = false;
         }
-    });
+    }
     
-    // Format price input
+    toggleContractFields();
+    statusSelect.addEventListener('change', toggleContractFields);
+    
     const rentPriceInput = document.getElementById('rent_price');
     rentPriceInput.addEventListener('input', function() {
         let value = this.value.replace(/[^\d]/g, '');
         if (value) {
-            // Format with Vietnamese number format (dots as thousands separators)
             this.value = parseInt(value).toLocaleString('vi-VN');
         }
     });
     
-    // Convert formatted price back to number before submit
     document.getElementById('editRoomForm').addEventListener('submit', function() {
         const priceValue = rentPriceInput.value.replace(/[^\d]/g, '');
         rentPriceInput.value = priceValue;
     });
     
-    // Allow only numbers and dots for price input
     rentPriceInput.addEventListener('keypress', function(e) {
-        // Allow: backspace, delete, tab, escape, enter, decimal point
         if ([46, 8, 9, 27, 13, 110].indexOf(e.keyCode) !== -1 ||
-            // Allow: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
             (e.keyCode === 65 && e.ctrlKey === true) ||
             (e.keyCode === 67 && e.ctrlKey === true) ||
             (e.keyCode === 86 && e.ctrlKey === true) ||
             (e.keyCode === 88 && e.ctrlKey === true)) {
             return;
         }
-        // Ensure that it is a number and stop the keypress
         if ((e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
             e.preventDefault();
         }
     });
-    
-    // Set minimum date to today
-    const today = new Date().toISOString().split('T')[0];
-    startDateInput.min = today;
 });
 </script>
 

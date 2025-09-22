@@ -29,16 +29,16 @@ if ($check_result->num_rows > 0) {
     exit();
 }
 
-$rooms_sql = "SELECT id, rent_price FROM rooms WHERE status = 'occupied'";
+$rooms_sql = "SELECT id, rent_price, num_people FROM rooms WHERE status = 'occupied'";
 $rooms_result = $conn->query($rooms_sql);
 
-$electricity_price_per_unit = 3500;
-$water_price_per_unit = 15000;
-$service_fee = 100000;
+$electricity_price_per_unit = 4000;
+$service_fee = 200000;
 
 while($room = $rooms_result->fetch_assoc()) {
     $room_id = $room['id'];
     $rent_amount = $room['rent_price'];
+    $person = $room['num_people'];
 
     // Lấy user_id và email từ bảng payments và users
     $user_sql = "SELECT u.id, u.email FROM users u JOIN payments p ON u.id = p.user_id WHERE p.room_id = ? AND p.payment_type = 'deposit' ORDER BY p.payment_date DESC LIMIT 1";
@@ -65,14 +65,14 @@ while($room = $rooms_result->fetch_assoc()) {
     $consumed_units = ($elec_data) ? ($elec_data['new_reading'] - $elec_data['old_reading']) : 0;
     $electricity_amount = $consumed_units * $electricity_price_per_unit;
 
-    $water_amount = 100000;
+    $water_amount = 100000*$person;
     
     $total_amount = $rent_amount + $electricity_amount + $water_amount + $service_fee;
 
     // Tạo hóa đơn
-    $insert_bill_sql = "INSERT INTO bills (user_id, room_id, billing_month, billing_year, rent_amount, electricity_amount, water_amount, service_fee, total_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid')";
+    $insert_bill_sql = "INSERT INTO bills (user_id, room_id, billing_month, billing_year, rent_amount, electricity_amount, water_amount, service_fee, total_amount,person, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unpaid')";
     $insert_bill_stmt = $conn->prepare($insert_bill_sql);
-    $insert_bill_stmt->bind_param("iiiidddds", $user_id, $room_id, $current_month, $current_year, $rent_amount, $electricity_amount, $water_amount, $service_fee, $total_amount);
+    $insert_bill_stmt->bind_param("iiiiddddis", $user_id, $room_id, $current_month, $current_year, $rent_amount, $electricity_amount, $water_amount, $service_fee, $total_amount,$person);
     $insert_bill_stmt->execute();
 
     if (!empty($user_email)) {
@@ -81,8 +81,8 @@ while($room = $rooms_result->fetch_assoc()) {
             $mail->isSMTP();
             $mail->Host = 'smtp.gmail.com'; // Thay bằng SMTP Host của bạn
             $mail->SMTPAuth = true;
-            $mail->Username = 'thienan21082025@gmail.com'; // Thay bằng email của bạn
-            $mail->Password = 'ppjjwpxhbpdmgyap'; // Thay bằng mật khẩu ứng dụng
+            $mail->Username = 'Thay bằng email của bạn'; // Thay bằng email của bạn
+            $mail->Password = 'Thay bằng mật khẩu ứng dụng'; // Thay bằng mật khẩu ứng dụng
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port = 465;
             $mail->CharSet = 'UTF-8';

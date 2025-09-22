@@ -92,11 +92,11 @@ if ($paymentType === 'bill' && $billId) {
                     <strong>Thẻ quốc tế (Visa/Master/JCB)</strong>
                 </label>
 
-                <label style="display: flex; align-items: center; margin: 0.5rem 0; cursor: pointer;">
+                <!-- <label style="display: flex; align-items: center; margin: 0.5rem 0; cursor: pointer;">
                     <input type="radio" name="method" value="linkWallet" style="margin-right: 0.5rem;">
                     <i class="fas fa-globe" style="color: #28a745; margin-right: 0.5rem;"></i>
                     <strong>Thanh toán tự động</strong>
-                </label>
+                </label> -->
             </div>
         </div>
         

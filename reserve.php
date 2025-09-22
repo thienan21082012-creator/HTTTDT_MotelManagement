@@ -20,7 +20,7 @@ if (!$room || $room['status'] != 'available') {
     exit();
 }
 
-$reservation_fee = 500000;
+$reservation_fee = max(0.1*$room['rent_price'],500000);
 ?>
 
 <div class="card">
