@@ -113,4 +113,6 @@ while($room = $rooms_result->fetch_assoc()) {
 $_SESSION['success_message'] = "Đã tạo hóa đơn và gửi email thông báo thành công.";
 header('Location: dashboard.php');
 exit();
+
 ?>
+

@@ -1,3 +1,4 @@
 admin_user :admin / admin123
 khach_hang_1: customer1 / customer1 
 khach_hang_2: customer2 / customer2 
+
