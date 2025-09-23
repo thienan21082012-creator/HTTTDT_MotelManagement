@@ -22,6 +22,45 @@ $result = $conn->query($sql);
                 <div class="room-status status-available">
                     <i class="fas fa-check-circle"></i> Trống
                 </div>
+
+                <?php
+                // Tìm tất cả ảnh trong thư mục: .../CĂN {room_id}
+                $roomId = (int)$row['id'];
+                $imageDirBase = __DIR__ . DIRECTORY_SEPARATOR . 'HÌNH CĂN HỘ CHUNG CƯ-20250923T112113Z-1-001' . DIRECTORY_SEPARATOR . 'HÌNH CĂN HỘ CHUNG CƯ' . DIRECTORY_SEPARATOR . 'CĂN ' . $roomId;
+                $imageUrls = [];
+                if (is_dir($imageDirBase)) {
+                    $candidates = glob($imageDirBase . DIRECTORY_SEPARATOR . '*.{jpg,jpeg,png,webp,gif,JPG,JPEG,PNG,WEBP,GIF}', GLOB_BRACE);
+                    if (!empty($candidates)) {
+                        natsort($candidates);
+                        foreach ($candidates as $absPath) {
+                            $relative = str_replace(__DIR__ . DIRECTORY_SEPARATOR, '', $absPath);
+                            $relative = str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+                            $segments = array_map(function($seg) { return rawurlencode($seg); }, explode('/', $relative));
+                            $imageUrls[] = implode('/', $segments);
+                        }
+                    }
+                }
+                ?>
+
+                <?php if (!empty($imageUrls)): ?>
+                    <div class="carousel" data-autoplay="5000">
+                        <div class="carousel-viewport">
+                            <div class="carousel-track">
+                                <?php foreach ($imageUrls as $url): ?>
+                                    <div class="carousel-slide">
+                                        <img src="<?php echo htmlspecialchars($url); ?>" alt="Ảnh phòng <?php echo htmlspecialchars($row['room_number']); ?>" loading="lazy">
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                        <button class="carousel-btn carousel-prev" aria-label="Ảnh trước"><i class="fas fa-chevron-left"></i></button>
+                        <button class="carousel-btn carousel-next" aria-label="Ảnh sau"><i class="fas fa-chevron-right"></i></button>
+                    </div>
+                <?php else: ?>
+                    <div class="room-image placeholder">
+                        <i class="fas fa-image"></i>
+                    </div>
+                <?php endif; ?>
                 
                 <?php if (isset($_SESSION['user_id'])): ?>
                     <div style="margin-top: 1.5rem; display: flex; gap: .75rem;">
@@ -48,6 +87,92 @@ $result = $conn->query($sql);
             </div>
         <?php endwhile; ?>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var carousels = document.querySelectorAll('.carousel');
+        carousels.forEach(function(carousel) {
+            var track = carousel.querySelector('.carousel-track');
+            var slides = Array.prototype.slice.call(carousel.querySelectorAll('.carousel-slide'));
+            if (!track || slides.length === 0) return;
+
+            var prevBtn = carousel.querySelector('.carousel-prev');
+            var nextBtn = carousel.querySelector('.carousel-next');
+            var index = 0;
+            var autoplayMs = parseInt(carousel.getAttribute('data-autoplay') || '5000', 10);
+            var isTouching = false;
+            var startX = 0;
+            var deltaX = 0;
+            var threshold = 30;
+            var intervalId = null;
+
+            function update() {
+                track.style.transform = 'translateX(' + (-index * 100) + '%)';
+            }
+
+            function next() {
+                index = (index + 1) % slides.length;
+                update();
+            }
+
+            function prev() {
+                index = (index - 1 + slides.length) % slides.length;
+                update();
+            }
+
+            function startAutoplay() {
+                if (autoplayMs > 0) {
+                    stopAutoplay();
+                    intervalId = setInterval(next, autoplayMs);
+                }
+            }
+
+            function stopAutoplay() {
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+            }
+
+            if (prevBtn) prevBtn.addEventListener('click', function() { prev(); startAutoplay(); });
+            if (nextBtn) nextBtn.addEventListener('click', function() { next(); startAutoplay(); });
+
+            // Touch swipe
+            carousel.addEventListener('touchstart', function(e) {
+                if (!e.touches || e.touches.length === 0) return;
+                isTouching = true;
+                startX = e.touches[0].clientX;
+                deltaX = 0;
+                stopAutoplay();
+            }, { passive: true });
+
+            carousel.addEventListener('touchmove', function(e) {
+                if (!isTouching || !e.touches || e.touches.length === 0) return;
+                deltaX = e.touches[0].clientX - startX;
+            }, { passive: true });
+
+            carousel.addEventListener('touchend', function() {
+                if (!isTouching) return;
+                if (Math.abs(deltaX) > threshold) {
+                    if (deltaX < 0) { next(); } else { prev(); }
+                } else {
+                    update();
+                }
+                isTouching = false;
+                startAutoplay();
+            });
+
+            // Pause on hover (desktop)
+            carousel.addEventListener('mouseenter', stopAutoplay);
+            carousel.addEventListener('mouseleave', startAutoplay);
+
+            // Init
+            track.style.transition = 'transform 0.4s ease';
+            slides.forEach(function(slide) { slide.style.minWidth = '100%'; });
+            update();
+            startAutoplay();
+        });
+    });
+    </script>
 <?php else: ?>
     <div class="card">
         <div style="text-align: center; padding: 3rem; color: #666;">

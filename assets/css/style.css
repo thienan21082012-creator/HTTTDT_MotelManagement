@@ -242,6 +242,88 @@ body {
     line-height: 1.5;
 }
 
+/* Room Images */
+.room-image-wrapper {
+    margin-top: 0.5rem;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #f8f9fa;
+    border: 1px solid #eee;
+}
+
+.room-image {
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
+    display: block;
+}
+
+.room-image.placeholder {
+    height: 220px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    background: repeating-linear-gradient(45deg, #f7f7f7, #f7f7f7 10px, #f2f2f2 10px, #f2f2f2 20px);
+    font-size: 2rem;
+}
+
+/* Carousel */
+.carousel {
+    position: relative;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #f8f9fa;
+    border: 1px solid #eee;
+}
+
+.carousel-viewport {
+    width: 100%;
+    height: 220px;
+}
+
+.carousel-track {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+.carousel-slide img {
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
+    display: block;
+}
+
+.carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.carousel-prev {
+    left: 8px;
+}
+
+.carousel-next {
+    right: 8px;
+}
+
+.carousel-btn:hover {
+    background: rgba(0, 0, 0, 0.6);
+}
+
 .room-status {
     display: inline-block;
     padding: 0.25rem 0.75rem;
