@@ -33,12 +33,13 @@ $rooms_sql = "SELECT id, rent_price, num_people FROM rooms WHERE status = 'occup
 $rooms_result = $conn->query($rooms_sql);
 
 $electricity_price_per_unit = 4000;
-$service_fee = 200000;
+
 
 while($room = $rooms_result->fetch_assoc()) {
     $room_id = $room['id'];
     $rent_amount = $room['rent_price'];
     $person = $room['num_people'];
+    $service_fee = $room['rent_price']*0.1;
 
     // Lấy user_id và email từ bảng payments và users
     $user_sql = "SELECT u.id, u.email FROM users u JOIN payments p ON u.id = p.user_id WHERE p.room_id = ? AND p.payment_type = 'deposit' ORDER BY p.payment_date DESC LIMIT 1";

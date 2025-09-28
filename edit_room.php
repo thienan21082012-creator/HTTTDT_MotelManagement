@@ -6,7 +6,6 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] != 'admin') {
 }
 require_once 'includes/db';
 
-// Kiểm tra nếu không có ID phòng được truyền
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     header('Location: dashboard.php');
     exit();
@@ -14,7 +13,6 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 
 $room_id = $_GET['id'];
 
-// Lấy thông tin phòng và thông tin hợp đồng
 $sql = "SELECT r.*, p.contract_duration, p.start_date
         FROM rooms r
         LEFT JOIN payments p ON r.id = p.room_id AND p.payment_type = 'deposit'
@@ -31,7 +29,6 @@ if (!$room) {
     exit();
 }
 
-// Xử lý khi form được gửi để cập nhật thông tin
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $room_number = trim($_POST['room_number']);
     $description = trim($_POST['description']);
@@ -53,10 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
     
     if (empty($errors)) {
-        // Cập nhật thông tin cơ bản của phòng trước
+        // Cập nhật thông tin cơ bản của phòng với chuỗi bind_param đã sửa
         $update_room_sql = "UPDATE rooms SET room_number = ?, description = ?, rent_price = ?, num_people = ?, status = ? WHERE id = ?";
         $update_room_stmt = $conn->prepare($update_room_sql);
-        $update_room_stmt->bind_param("sdsisi", $room_number, $description, $rent_price, $num_people, $status, $room_id);
+        $update_room_stmt->bind_param("ssdisi", $room_number, $description, $rent_price, $num_people, $status, $room_id);
         $update_room_stmt->execute();
         
         if ($status === 'occupied' && ($room['status'] === 'available' || $room['status'] === 'reserved')) {
@@ -179,6 +176,12 @@ include 'includes/header.php';
                     </option>
                     <option value="occupied" <?php echo ($room['status'] == 'occupied') ? 'selected' : ''; ?>>
                         Đã thuê
+                    </option>
+                    <option value="repairing" <?php echo ($room['status'] == 'repairing') ? 'selected' : ''; ?>>
+                        Đang sửa chữa
+                    </option>
+                    <option value="maintence" <?php echo ($room['status'] == 'maintence') ? 'selected' : ''; ?>>
+                        Cần sửa chữa
                     </option>
                 </select>
             </div>

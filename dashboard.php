@@ -12,11 +12,12 @@ if (isset($_POST['add_room'])) {
     $room_number = $_POST['room_number'];
     $description = $_POST['description'];
     $rent_price = $_POST['rent_price'];
+    $num_people = $_POST['num_people'];
     $status = 'available';
 
-    $sql = "INSERT INTO rooms (room_number, description, rent_price, status) VALUES (?, ?, ?, ?)";
+    $sql = "INSERT INTO rooms (room_number, description, rent_price, num_people, status) VALUES (?, ?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ssds", $room_number, $description, $rent_price, $status);
+    $stmt->bind_param("ssdis", $room_number, $description, $rent_price, $num_people, $status);
     $stmt->execute();
 }
 
@@ -48,62 +49,23 @@ $stats['total_users'] = $conn->query("SELECT COUNT(*) as count FROM users WHERE 
 $stats['unpaid_bills'] = $conn->query("SELECT COUNT(*) as count FROM bills WHERE status = 'unpaid'")->fetch_assoc()['count'];
 
 // Lấy danh sách phòng và thông tin người thuê (nếu có)
-// Kiểm tra tương thích: nếu bảng rooms CHƯA có cột contract_duration/start_date thì fallback về payments
-$has_contract_cols = false;
-$check_col = $conn->query("SHOW COLUMNS FROM rooms LIKE 'contract_duration'");
-if ($check_col && $check_col->num_rows > 0) { $has_contract_cols = true; }
-
-if ($has_contract_cols) {
-    $sql_rooms = "SELECT 
-        r.*, 
-        p.user_id, 
-        COALESCE(r.contract_duration, p.contract_duration) AS contract_duration,
-        COALESCE(r.start_date, p.start_date) AS start_date,
-        er.old_reading,
-        er.new_reading,
-        er.reading_date,
-        res.user_id as reserved_user_id
-    FROM rooms r 
-    LEFT JOIN (
-        SELECT pp1.*
-        FROM payments pp1
-        JOIN (
-            SELECT room_id, MAX(id) AS max_id
-            FROM payments
-            GROUP BY room_id
-        ) latest ON pp1.id = latest.max_id
-    ) p ON r.id = p.room_id
-    LEFT JOIN reservations res ON r.id = res.room_id
-    LEFT JOIN electricity_readings er ON r.id = er.room_id AND er.id = (
-        SELECT MAX(id) FROM electricity_readings WHERE room_id = r.id
-    )
-    ORDER BY r.room_number ASC";
-} else {
-    $sql_rooms = "SELECT 
-        r.*, 
-        p.user_id, 
-        p.contract_duration AS contract_duration,
-        p.start_date AS start_date,
-        er.old_reading,
-        er.new_reading,
-        er.reading_date,
-        res.user_id as reserved_user_id
-    FROM rooms r 
-    LEFT JOIN (
-        SELECT pp1.*
-        FROM payments pp1
-        JOIN (
-            SELECT room_id, MAX(id) AS max_id
-            FROM payments
-            GROUP BY room_id
-        ) latest ON pp1.id = latest.max_id
-    ) p ON r.id = p.room_id
-    LEFT JOIN reservations res ON r.id = res.room_id
-    LEFT JOIN electricity_readings er ON r.id = er.room_id AND er.id = (
-        SELECT MAX(id) FROM electricity_readings WHERE room_id = r.id
-    )
-    ORDER BY r.room_number ASC";
-}
+$sql_rooms = "SELECT 
+    r.*, u.full_name,
+    p.user_id, 
+    p.contract_duration,
+    p.start_date,
+    er.old_reading,
+    er.new_reading,
+    er.reading_date,
+    res.user_id as reserved_user_id
+FROM rooms r 
+LEFT JOIN payments p ON r.id = p.room_id AND p.payment_type = 'deposit'
+LEFT JOIN reservations res ON r.id = res.room_id
+LEFT JOIN users u ON u.id = p.user_id
+LEFT JOIN electricity_readings er ON r.id = er.room_id AND er.id = (
+    SELECT MAX(id) FROM electricity_readings WHERE room_id = r.id
+)
+ORDER BY r.room_number ASC";
 $rooms_result = $conn->query($sql_rooms);
 if ($rooms_result === false) {
     $_SESSION['error_message'] = 'Lỗi truy vấn danh sách phòng: ' . $conn->error;
@@ -117,25 +79,25 @@ $filter_month = isset($_GET['bill_month']) && $_GET['bill_month'] !== '' ? (int)
 $filter_year = isset($_GET['bill_year']) && $_GET['bill_year'] !== '' ? (int)$_GET['bill_year'] : null;
 
 if ($filter_month && $filter_year) {
-    $bills_sql = "SELECT b.*, r.room_number, u.username FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id WHERE b.billing_month = ? AND b.billing_year = ? ORDER BY b.created_at DESC";
+    $bills_sql = "SELECT b.*, r.room_number, u.username, b.person FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id WHERE b.billing_month = ? AND b.billing_year = ? ORDER BY b.created_at DESC";
     $bills_stmt = $conn->prepare($bills_sql);
     $bills_stmt->bind_param('ii', $filter_month, $filter_year);
     $bills_stmt->execute();
     $bills_admin_result = $bills_stmt->get_result();
 } elseif ($filter_month && !$filter_year) {
-    $bills_sql = "SELECT b.*, r.room_number, u.username FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id WHERE b.billing_month = ? ORDER BY b.created_at DESC";
+    $bills_sql = "SELECT b.*, r.room_number, u.username, b.person FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id WHERE b.billing_month = ? ORDER BY b.created_at DESC";
     $bills_stmt = $conn->prepare($bills_sql);
     $bills_stmt->bind_param('i', $filter_month);
     $bills_stmt->execute();
     $bills_admin_result = $bills_stmt->get_result();
 } elseif (!$filter_month && $filter_year) {
-    $bills_sql = "SELECT b.*, r.room_number, u.username FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id WHERE b.billing_year = ? ORDER BY b.created_at DESC";
+    $bills_sql = "SELECT b.*, r.room_number, u.username, b.person FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id WHERE b.billing_year = ? ORDER BY b.created_at DESC";
     $bills_stmt = $conn->prepare($bills_sql);
     $bills_stmt->bind_param('i', $filter_year);
     $bills_stmt->execute();
     $bills_admin_result = $bills_stmt->get_result();
 } else {
-    $bills_sql = "SELECT b.*, r.room_number, u.username FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id ORDER BY b.created_at DESC LIMIT 100";
+    $bills_sql = "SELECT b.*, r.room_number, u.username, b.person FROM bills b JOIN rooms r ON b.room_id = r.id JOIN users u ON b.user_id = u.id ORDER BY b.created_at DESC LIMIT 100";
     $bills_admin_result = $conn->query($bills_sql);
 }
 ?>
@@ -145,7 +107,6 @@ if ($filter_month && $filter_year) {
     <p>Chào mừng, <strong><?php echo $_SESSION['username']; ?></strong>! Đây là trang quản trị hệ thống.</p>
 </div>
 
-<!-- Hóa đơn đã tạo -->
 <div class="card">
     <h3><i class="fas fa-file-invoice-dollar"></i> Hóa đơn đã tạo</h3>
     <form method="GET" action="dashboard.php" style="margin: 1rem 0; display: flex; gap: 1rem; align-items: end;">
@@ -214,7 +175,6 @@ if ($filter_month && $filter_year) {
     </div>
 </div>
 
-<!-- Thống kê -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-number"><?php echo $stats['total_rooms']; ?></div>
@@ -242,7 +202,6 @@ if ($filter_month && $filter_year) {
     </div>
 </div>
 
-<!-- Quản lý phòng trọ -->
 <div class="card">
     <h3><i class="fas fa-plus-circle"></i> Thêm phòng mới</h3>
     <form action="dashboard.php" method="POST">
@@ -271,7 +230,6 @@ if ($filter_month && $filter_year) {
     </form>
 </div>
 
-<!-- Tạo hóa đơn -->
 <div class="card">
     <h3><i class="fas fa-file-invoice"></i> Tạo hóa đơn hàng tháng</h3>
     <p>Tạo hóa đơn cho tất cả phòng đang thuê trong tháng hiện tại.</p>
@@ -282,7 +240,6 @@ if ($filter_month && $filter_year) {
     </form>
 </div>
     
-<!-- Danh sách phòng -->
 <div class="card">
     <h3><i class="fas fa-list"></i> Danh sách phòng</h3>
     <div class="room-grid">
@@ -298,7 +255,9 @@ if ($filter_month && $filter_year) {
                     $status_text = [
                         'available' => 'Trống',
                         'occupied' => 'Đã thuê',
-                        'reserved' => 'Đã cọc'
+                        'reserved' => 'Đã cọc',
+                        'repairing' => 'Đang sửa chữa',
+                        'maintenance' => 'Cần sửa chữa'
                     ];
                     echo $status_text[$row['status']];
                     ?>
@@ -307,7 +266,7 @@ if ($filter_month && $filter_year) {
                 <?php if ($row['status'] == 'occupied'): ?>
                     <div style="margin: 1rem 0; padding: 1rem; background: rgba(40, 167, 69, 0.1); border-radius: 10px;">
                         <?php if ($row['user_id'] && $row['user_id'] != 0): ?>
-                            <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> User ID <?php echo htmlspecialchars($row['user_id']); ?></p>
+                            <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> <?php echo htmlspecialchars($row['full_name']); ?></p>
                         <?php else: ?>
                             <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> Admin (không có thông tin user)</p>
                         <?php endif; ?>
@@ -355,7 +314,6 @@ if ($filter_month && $filter_year) {
     </div>
 </div>
 
-<!-- Cập nhật chỉ số điện -->
 <div class="card">
     <h3><i class="fas fa-bolt"></i> Cập nhật chỉ số điện</h3>
     <form action="update_electricity.php" method="POST">
@@ -395,7 +353,6 @@ if ($filter_month && $filter_year) {
     </form>
 </div>
 
-<!-- Quản lý người dùng -->
 <div class="card">
     <h3><i class="fas fa-users"></i> Quản lý người dùng</h3>
     <div class="table-container">
@@ -453,6 +410,10 @@ if ($filter_month && $filter_year) {
             };
             xhr.open("GET", "get_last_reading.php?room_id=" + roomId, true);
             xhr.send();
+        }
+        
+        function confirmDelete(message) {
+            return confirm(message);
         }
     </script>
 

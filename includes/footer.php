@@ -3,8 +3,8 @@
     
     <footer style="background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); padding: 2rem 0; margin-top: 3rem; text-align: center; color: white;">
         <div class="container">
-            <p>&copy; 2024 Hệ thống quản lý Motel. Tất cả quyền được bảo lưu.</p>
-            <p>Được phát triển với <i class="fas fa-heart" style="color: #ff6b6b;"></i> bởi HTTTDT Team</p>
+            <p>&copy; 2025 Hệ thống quản lý CHDV. Tất cả quyền được bảo lưu.</p>
+            <p>Được phát triển với <i class="fas fa-heart" style="color: #ff6b6b;"></i> bởi Nhóm 1 - Hệ thống thanh toán điện tử</p>
         </div>
     </footer>
     
