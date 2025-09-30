@@ -2,7 +2,7 @@
 session_start();
 require_once 'includes/db';
 
-$page_title = "Thanh toán MoMo";
+$page_title = "Thanh toán";
 require_once 'includes/header.php';
 
 if (!isset($_SESSION['momo_payment'])) {
@@ -45,7 +45,7 @@ if ($paymentType === 'bill' && $billId) {
 ?>
 
 <div class="card">
-    <h2><i class="fas fa-credit-card"></i> Thanh toán qua MoMo</h2>
+    <h2><i class="fas fa-credit-card"></i> Thanh toán</h2>
     <p>Vui lòng chọn phương thức thanh toán và xác nhận giao dịch.</p>
 </div>
 
@@ -66,37 +66,55 @@ if ($paymentType === 'bill' && $billId) {
     
     <form action="momo_payment.php" method="POST" style="margin-top: 1rem;">
         <input type="hidden" name="amount" value="<?php echo $amount; ?>">
-        <input type="hidden" name="orderId" value="<?php echo $orderId; ?>">
+        <input type="hidden" name="orderId" value="<?php echo htmlspecialchars($orderId); ?>">
         <input type="hidden" name="orderInfo" value="<?php echo htmlspecialchars($orderInfo); ?>">
         
         <div style="background: rgba(255, 193, 7, 0.1); padding: 1.5rem; border-radius: 15px; border-left: 4px solid #ffc107; margin: 1rem 0;">
             <h4><i class="fas fa-mobile-alt"></i> Phương thức thanh toán</h4>
             
             <div style="margin: 1rem 0;">
-                <label style="display: flex; align-items: center; margin: 0.5rem 0; cursor: pointer;">
+                <!-- MoMo Wallet -->
+                <label style="display: flex; align-items: center; margin: 0.5rem 0; padding: 0.75rem; border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#c2185b'; this.style.background='rgba(194, 24, 91, 0.05)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.background='transparent';">
                     <input type="radio" name="method" value="wallet" checked style="margin-right: 0.5rem;">
-                    <i class="fas fa-wallet" style="color: #c2185b; margin-right: 0.5rem;"></i>
-                    <strong>Ví MoMo / QR Code</strong>
-                    <span style="margin-left: auto; color: #666;">Khuyến nghị</span>
+                    <i class="fas fa-wallet" style="color: #c2185b; margin-right: 0.5rem; font-size: 1.2rem;"></i>
+                    <div style="flex: 1;">
+                        <strong>Ví MoMo / QR Code</strong>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">Quét mã QR hoặc thanh toán qua ví MoMo</div>
+                    </div>
+                    <span style="background: #28a745; color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">Khuyến nghị</span>
                 </label>
                 
-                <label style="display: flex; align-items: center; margin: 0.5rem 0; cursor: pointer;">
+                <!-- ATM Card -->
+                <label style="display: flex; align-items: center; margin: 0.5rem 0; padding: 0.75rem; border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#007bff'; this.style.background='rgba(0, 123, 255, 0.05)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.background='transparent';">
                     <input type="radio" name="method" value="atm" style="margin-right: 0.5rem;">
-                    <i class="fas fa-credit-card" style="color: #007bff; margin-right: 0.5rem;"></i>
-                    <strong>Thẻ ATM nội địa</strong>
+                    <i class="fas fa-credit-card" style="color: #007bff; margin-right: 0.5rem; font-size: 1.2rem;"></i>
+                    <div style="flex: 1;">
+                        <strong>Thẻ ATM nội địa</strong>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">Thanh toán qua thẻ ngân hàng nội địa</div>
+                    </div>
                 </label>
                 
-                <label style="display: flex; align-items: center; margin: 0.5rem 0; cursor: pointer;">
+                <!-- Credit Card -->
+                <label style="display: flex; align-items: center; margin: 0.5rem 0; padding: 0.75rem; border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#28a745'; this.style.background='rgba(40, 167, 69, 0.05)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.background='transparent';">
                     <input type="radio" name="method" value="credit" style="margin-right: 0.5rem;">
-                    <i class="fas fa-globe" style="color: #28a745; margin-right: 0.5rem;"></i>
-                    <strong>Thẻ quốc tế (Visa/Master/JCB)</strong>
+                    <i class="fas fa-globe" style="color: #28a745; margin-right: 0.5rem; font-size: 1.2rem;"></i>
+                    <div style="flex: 1;">
+                        <strong>Thẻ quốc tế (Visa/Master/JCB)</strong>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">Thanh toán qua thẻ tín dụng/ghi nợ quốc tế</div>
+                    </div>
                 </label>
 
-                <!-- <label style="display: flex; align-items: center; margin: 0.5rem 0; cursor: pointer;">
-                    <input type="radio" name="method" value="linkWallet" style="margin-right: 0.5rem;">
-                    <i class="fas fa-globe" style="color: #28a745; margin-right: 0.5rem;"></i>
-                    <strong>Thanh toán tự động</strong>
-                </label> -->
+                <!-- VNPay -->
+                <label style="display: flex; align-items: center; margin: 0.5rem 0; padding: 0.75rem; border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#0088cc'; this.style.background='rgba(0, 136, 204, 0.05)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.background='transparent';">
+                    <input type="radio" name="method" value="vnpay" style="margin-right: 0.5rem;">
+                    <div style="width: 30px; height: 30px; background: #0088cc; border-radius: 5px; display: flex; align-items: center; justify-content: center; margin-right: 0.5rem;">
+                        <span style="color: white; font-weight: bold; font-size: 0.7rem;">VNP</span>
+                    </div>
+                    <div style="flex: 1;">
+                        <strong>VNPay</strong>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">Thanh toán qua cổng VNPay</div>
+                    </div>
+                </label>
             </div>
         </div>
         
@@ -115,7 +133,7 @@ if ($paymentType === 'bill' && $billId) {
     <div style="background: rgba(40, 167, 69, 0.1); padding: 1rem; border-radius: 10px; border-left: 4px solid #28a745;">
         <h4><i class="fas fa-shield-alt"></i> Bảo mật thanh toán</h4>
         <p style="margin: 0; color: #666; font-size: 0.9rem;">
-            <i class="fas fa-lock"></i> Giao dịch được bảo mật bởi MoMo với mã hóa SSL 256-bit
+            <i class="fas fa-lock"></i> Giao dịch được bảo mật với mã hóa SSL 256-bit
         </p>
     </div>
 </div>

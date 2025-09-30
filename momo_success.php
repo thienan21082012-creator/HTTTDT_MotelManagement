@@ -5,34 +5,70 @@ require_once 'includes/db';
 $page_title = "Kết quả thanh toán";
 require_once 'includes/header.php';
 
-// Get payment result from MoMo
-$resultCode = isset($_GET['resultCode']) ? (int)$_GET['resultCode'] : null;
-$message = isset($_GET['message']) ? $_GET['message'] : '';
-$orderId = isset($_GET['orderId']) ? $_GET['orderId'] : '';
-$amount = isset($_GET['amount']) ? $_GET['amount'] : '';
-
-// Debug information (remove in production)
-if (isset($_GET['debug']) && $_GET['debug'] == '1') {
-    echo '<div class="card" style="background: #f8f9fa; border: 1px solid #dee2e6;">';
-    echo '<h3><i class="fas fa-bug"></i> Debug Information</h3>';
-    echo '<p><strong>All GET parameters:</strong></p>';
-    echo '<pre>' . htmlspecialchars(print_r($_GET, true)) . '</pre>';
-    echo '</div>';
-}
-
-// Parse orderId to get payment details
-$orderParts = explode('_', $orderId);
-$paymentType = $orderParts[0] ?? '';
+// Get payment result from MoMo or VNPay
+$resultCode = null;
+$message = '';
+$orderId = '';
+$amount = 0;
+$paymentType = '';
 $roomId = '';
 $userId = '';
 $billId = '';
-if ($paymentType === 'bill') {
-    $billId = $orderParts[1] ?? '';
-    $userId = $orderParts[2] ?? '';
-} else {
-    $roomId = $orderParts[1] ?? '';
-    $userId = $orderParts[2] ?? '';
+
+if (isset($_GET['resultCode'])) { // MoMo
+    $resultCode = (int)$_GET['resultCode'];
+    $message = isset($_GET['message']) ? $_GET['message'] : '';
+    $orderId = isset($_GET['orderId']) ? $_GET['orderId'] : '';
+    $amount = isset($_GET['amount']) ? $_GET['amount'] : '';
+    
+    $orderParts = explode('_', $orderId);
+    $paymentType = $orderParts[0] ?? '';
+    if ($paymentType === 'bill') {
+        $billId = $orderParts[1] ?? '';
+        $userId = $orderParts[2] ?? '';
+    } else {
+        $roomId = $orderParts[1] ?? '';
+        $userId = $orderParts[2] ?? '';
+    }
+
+} elseif (isset($_GET['vnp_ResponseCode'])) { // VNPay
+    require_once 'vnpay_config.php';
+    $vnpayConfig = getVNPayConfig();
+    
+    $vnp_SecureHash = $_GET['vnp_SecureHash'];
+    $inputData = [];
+    foreach ($_GET as $key => $value) {
+        if (substr($key, 0, 4) == "vnp_") {
+            $inputData[$key] = $value;
+        }
+    }
+    unset($inputData['vnp_SecureHash']);
+    ksort($inputData);
+    $hashData = http_build_query($inputData, '', '&');
+    $secureHash = hash_hmac('sha512', $hashData, $vnpayConfig['vnp_HashSecret']);
+
+    if ($secureHash === $vnp_SecureHash) {
+        $resultCode = ($_GET['vnp_ResponseCode'] == '00') ? 0 : 99; // 0 for success, 99 for others
+        $message = ($_GET['vnp_ResponseCode'] == '00') ? 'Giao dịch thành công' : 'Giao dịch không thành công';
+        $orderId = isset($_GET['vnp_TxnRef']) ? $_GET['vnp_TxnRef'] : '';
+        $amount = isset($_GET['vnp_Amount']) ? ($_GET['vnp_Amount'] / 100) : 0;
+
+        $orderParts = explode('_', $orderId);
+        $paymentType = $orderParts[0] ?? '';
+        if ($paymentType === 'bill') {
+            $billId = $orderParts[1] ?? '';
+            $userId = $orderParts[2] ?? '';
+        } else {
+            $roomId = $orderParts[1] ?? '';
+            $userId = $orderParts[2] ?? '';
+        }
+
+    } else {
+        $resultCode = 99;
+        $message = 'Chữ ký không hợp lệ từ VNPay.';
+    }
 }
+
 
 // Get room information
 $room_info = null;
@@ -45,82 +81,70 @@ if ($roomId) {
         $room_result = $room_stmt->get_result();
         $room_info = $room_result->fetch_assoc();
     } catch (Exception $e) {
-        // Log error but don't show to user
         error_log("Error getting room info: " . $e->getMessage());
     }
 }
 
-// Fallback: if payment succeeded and IPN hasn't updated yet, apply updates here
-try {
-    if ($resultCode === 0 && $paymentType === 'reservation' && $roomId && $userId) {
+// Fallback logic for database updates
+if ($resultCode === 0) {
+    try {
         $conn->begin_transaction();
-
-        // Lock room
-        $lock_sql = "SELECT id, status FROM rooms WHERE id = ? FOR UPDATE";
-        $lock_stmt = $conn->prepare($lock_sql);
-        $lock_stmt->bind_param("i", $roomId);
-        $lock_stmt->execute();
-        $lock_res = $lock_stmt->get_result();
-        $locked_room = $lock_res->fetch_assoc();
-
-        if ($locked_room) {
-            // Update reservation pending -> paid (idempotent)
+        
+        // Handle Reservation Payment
+        if ($paymentType === 'reservation') {
+            // Update reservation status to 'paid'
             $upd_res_sql = "UPDATE reservations SET status = 'paid' WHERE user_id = ? AND room_id = ? AND status = 'pending'";
             $upd_res_stmt = $conn->prepare($upd_res_sql);
             $upd_res_stmt->bind_param("ii", $userId, $roomId);
             $upd_res_stmt->execute();
 
-            // Set room to reserved only if available
+            // Update room status to 'reserved' if it was 'available'
             $upd_room_sql = "UPDATE rooms SET status = 'reserved' WHERE id = ? AND status = 'available'";
             $upd_room_stmt = $conn->prepare($upd_room_sql);
             $upd_room_stmt->bind_param("i", $roomId);
             $upd_room_stmt->execute();
 
-            // Remove from cart
+            // Remove room from user's cart
             $del_cart_sql = "DELETE FROM carts WHERE user_id = ? AND room_id = ?";
             $del_cart_stmt = $conn->prepare($del_cart_sql);
             $del_cart_stmt->bind_param("ii", $userId, $roomId);
             $del_cart_stmt->execute();
+
+        } elseif ($paymentType === 'deposit') {
+            // Handle Deposit Payment
+            // Update payment record to 'completed'
+            $upd_pay_sql = "UPDATE payments SET payment_status = 'completed' WHERE user_id = ? AND room_id = ? AND payment_type = 'deposit' AND payment_status = 'pending'";
+            $upd_pay_stmt = $conn->prepare($upd_pay_sql);
+            $upd_pay_stmt->bind_param('ii', $userId, $roomId);
+            $upd_pay_stmt->execute();
+
+            // Occupy the room
+            $upd_room_sql = "UPDATE rooms SET status = 'occupied' WHERE id = ?";
+            $upd_room_stmt = $conn->prepare($upd_room_sql);
+            $upd_room_stmt->bind_param('i', $roomId);
+            $upd_room_stmt->execute();
+
+            // Remove reservation if it exists
+            $del_res_sql = "DELETE FROM reservations WHERE user_id = ? AND room_id = ?";
+            $del_res_stmt = $conn->prepare($del_res_sql);
+            $del_res_stmt->bind_param('ii', $userId, $roomId);
+            $del_res_stmt->execute();
+
+        } elseif ($paymentType === 'bill') {
+            // Handle Bill Payment
+            $upd_bill_sql = "UPDATE bills SET status = 'paid' WHERE id = ? AND user_id = ? AND status = 'unpaid'";
+            $upd_bill_stmt = $conn->prepare($upd_bill_sql);
+            $upd_bill_stmt->bind_param('ii', $billId, $userId);
+            $upd_bill_stmt->execute();
         }
 
         $conn->commit();
+    } catch (Throwable $e) {
+        if ($conn && $conn->errno === 0) {
+            @$conn->rollback();
+        }
+        error_log("Payment success fallback update failed: " . $e->getMessage());
     }
-    // Fallback for deposit success: mark payment completed, occupy room, delete reservation
-    if ($resultCode === 0 && $paymentType === 'deposit' && $roomId && $userId) {
-        $conn->begin_transaction();
-
-        // Complete any pending deposit payment
-        $upd_pay_sql = "UPDATE payments SET payment_status = 'completed' WHERE user_id = ? AND room_id = ? AND payment_type = 'deposit' AND payment_status = 'pending'";
-        $upd_pay_stmt = $conn->prepare($upd_pay_sql);
-        $upd_pay_stmt->bind_param('ii', $userId, $roomId);
-        $upd_pay_stmt->execute();
-
-        // Occupy the room
-        $upd_room_sql = "UPDATE rooms SET status = 'occupied' WHERE id = ?";
-        $upd_room_stmt = $conn->prepare($upd_room_sql);
-        $upd_room_stmt->bind_param('i', $roomId);
-        $upd_room_stmt->execute();
-
-        // Remove reservation if exists
-        $del_res_sql = "DELETE FROM reservations WHERE user_id = ? AND room_id = ?";
-        $del_res_stmt = $conn->prepare($del_res_sql);
-        $del_res_stmt->bind_param('ii', $userId, $roomId);
-        $del_res_stmt->execute();
-
-        $conn->commit();
-    }
-    // Fallback for bill payment: mark bill as paid
-    if ($resultCode === 0 && $paymentType === 'bill' && $billId && $userId) {
-        $upd_bill_sql = "UPDATE bills SET status = 'paid' WHERE id = ? AND user_id = ? AND status = 'unpaid'";
-        $upd_bill_stmt = $conn->prepare($upd_bill_sql);
-        $upd_bill_stmt->bind_param('ii', $billId, $userId);
-        $upd_bill_stmt->execute();
-    }
-} catch (Throwable $e) {
-    if ($conn && $conn->errno === 0) {
-        @$conn->rollback();
-    }
-    error_log("MoMo success fallback update failed: " . $e->getMessage());
 }
 ?>
 
@@ -155,9 +179,15 @@ try {
                 <strong>Ký hợp đồng thành công!</strong><br>
                 Bạn đã chính thức thuê phòng. Chúc bạn có những ngày ở trọ vui vẻ!
             </div>
+        <?php elseif ($paymentType === 'bill'): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-file-invoice-dollar"></i>
+                <strong>Thanh toán hóa đơn thành công!</strong><br>
+                Hóa đơn của bạn đã được thanh toán.
+            </div>
         <?php endif; ?>
         
-    <?php elseif ($resultCode !== null): ?>
+    <?php else: ?>
         <div class="alert alert-error">
             <i class="fas fa-exclamation-triangle"></i>
             <strong>Thanh toán không thành công</strong>
@@ -167,25 +197,6 @@ try {
             <h4><i class="fas fa-info-circle"></i> Thông tin lỗi</h4>
             <p><strong>Mã lỗi:</strong> <?php echo (int)$resultCode; ?></p>
             <p><strong>Thông báo:</strong> <?php echo htmlspecialchars($message); ?></p>
-        </div>
-        <?php
-        // Mark pending deposit payment as failed if user canceled or payment failed
-        try {
-            if ($paymentType === 'deposit' && $roomId && $userId) {
-                $upd_pay_sql = "UPDATE payments SET payment_status = 'failed' WHERE user_id = ? AND room_id = ? AND payment_type = 'deposit' AND payment_status = 'pending'";
-                $upd_pay_stmt = $conn->prepare($upd_pay_sql);
-                $upd_pay_stmt->bind_param('ii', $userId, $roomId);
-                $upd_pay_stmt->execute();
-            }
-        } catch (Throwable $e) {
-            error_log('Mark deposit failed on return error: ' . $e->getMessage());
-        }
-        ?>
-        
-    <?php else: ?>
-        <div class="alert alert-warning">
-            <i class="fas fa-question-circle"></i>
-            <strong>Không có thông tin giao dịch</strong>
         </div>
     <?php endif; ?>
     
@@ -197,15 +208,6 @@ try {
             <a href="checkout_deposit.php?room_id=<?php echo $roomId; ?>" class="btn btn-success" style="flex: 1; text-align: center;">
                 <i class="fas fa-credit-card"></i> Thanh toán tiền cọc
             </a>
-        <?php elseif ($paymentType === 'bill'): ?>
-            <a href="index.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
-                <i class="fas fa-times"></i> Hủy thanh toán
-            </a>
-        <?php else: ?>
-            <a href="cancel_reservation.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
-                <i class="fas fa-times"></i> Hủy giữ chỗ
-            </a>
-
         <?php endif; ?>
     </div>
 </div>

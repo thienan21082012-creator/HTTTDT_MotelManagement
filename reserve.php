@@ -53,7 +53,7 @@ $reservation_fee = max(0.1*$room['rent_price'],500000);
         
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
             <button type="submit" class="btn btn-success" style="flex: 1;">
-                <i class="fas fa-credit-card"></i> Thanh toán qua MoMo
+                <i class="fas fa-credit-card"></i> Thanh toán
             </button>
             <a href="view_rooms.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
                 <i class="fas fa-arrow-left"></i> Hủy bỏ
