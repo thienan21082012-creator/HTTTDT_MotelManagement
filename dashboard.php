@@ -1,4 +1,121 @@
 <?php
+// Early partial handler for AJAX room list to avoid including header/footer in response
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+if (isset($_GET['partial']) && $_GET['partial'] === 'rooms') {
+    if (!isset($_SESSION['role']) || $_SESSION['role'] != 'admin') {
+        http_response_code(403);
+        exit();
+    }
+    require_once 'includes/db';
+    $allowed_statuses = ['available','occupied','reserved','repairing','maintenance','maintence'];
+    $room_status_filter = isset($_GET['room_status']) ? strtolower(trim($_GET['room_status'])) : '';
+    if (!in_array($room_status_filter, $allowed_statuses)) {
+        if ($room_status_filter !== '' && $room_status_filter !== 'all') {
+            $room_status_filter = '';
+        }
+    }
+    $where_status_sql = '';
+    if ($room_status_filter && $room_status_filter !== 'all') {
+        if ($room_status_filter === 'maintenance' || $room_status_filter === 'maintence') {
+            $where_status_sql = "WHERE r.status IN ('maintenance','maintence')";
+        } else {
+            $where_status_sql = "WHERE r.status = '" . $conn->real_escape_string($room_status_filter) . "'";
+        }
+    }
+    $sql_rooms = "SELECT 
+        r.*, u.full_name,
+        p.user_id, 
+        p.contract_duration,
+        p.start_date,
+        er.old_reading,
+        er.new_reading,
+        er.reading_date,
+        res.user_id as reserved_user_id
+    FROM rooms r 
+    LEFT JOIN payments p ON r.id = p.room_id AND p.payment_type = 'deposit'
+    LEFT JOIN reservations res ON r.id = res.room_id
+    LEFT JOIN users u ON u.id = p.user_id
+    LEFT JOIN electricity_readings er ON r.id = er.room_id AND er.id = (
+        SELECT MAX(id) FROM electricity_readings WHERE room_id = r.id
+    )
+    " . ($where_status_sql ? $where_status_sql . "\n" : '') . "ORDER BY r.room_number ASC";
+    $rooms_result = $conn->query($sql_rooms);
+    if ($rooms_result && $rooms_result->num_rows > 0) {
+        while($row = $rooms_result->fetch_assoc()) {
+            $statusKey = $row['status'] === 'maintence' ? 'maintenance' : $row['status'];
+            ?>
+            <div class="room-card">
+                <div class="room-number">Phòng <?php echo htmlspecialchars($row['room_number']); ?></div>
+                <div class="room-price"><?php echo number_format($row['rent_price']); ?> VND/tháng</div>
+                <div class="room-description"><?php echo htmlspecialchars($row['description']); ?></div>
+                <div class="room-status status-<?php echo $statusKey; ?>">
+                    <?php 
+                        $status_text = [
+                            'available' => 'Trống',
+                            'occupied' => 'Đã thuê',
+                            'reserved' => 'Đã cọc',
+                            'repairing' => 'Đang sửa chữa',
+                            'maintenance' => 'Cần bảo trì',
+                            'maintence' => 'Cần bảo trì'
+                        ];
+                        echo $status_text[$statusKey] ?? htmlspecialchars($statusKey);
+                    ?>
+                </div>
+                <?php if ($row['status'] == 'occupied'): ?>
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(40, 167, 69, 0.1); border-radius: 10px;">
+                        <?php if ($row['user_id'] && $row['user_id'] != 0): ?>
+                            <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> <?php echo htmlspecialchars($row['full_name']); ?></p>
+                        <?php else: ?>
+                            <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> Admin (không có thông tin user)</p>
+                        <?php endif; ?>
+                        <?php if ($row['contract_duration']): ?>
+                            <p><strong><i class="fas fa-calendar"></i> Thời hạn:</strong> <?php echo htmlspecialchars($row['contract_duration']); ?> tháng</p>
+                        <?php endif; ?>
+                        <?php if ($row['start_date']): ?>
+                            <p><strong><i class="fas fa-calendar-check"></i> Ngày nhận:</strong> <?php echo htmlspecialchars($row['start_date']); ?></p>
+                        <?php endif; ?>
+                        <?php if ($row['reading_date']): ?>
+                            <p><strong><i class="fas fa-bolt"></i> Điện:</strong> <?php echo htmlspecialchars($row['old_reading']); ?> → <?php echo htmlspecialchars($row['new_reading']); ?></p>
+                            <p><strong><i class="fas fa-calendar"></i> Ngày ghi:</strong> <?php echo htmlspecialchars($row['reading_date']); ?></p>
+                        <?php else: ?>
+                            <p><i class="fas fa-exclamation-triangle"></i> Chưa có thông tin điện</p>
+                        <?php endif; ?>
+                    </div>
+                <?php elseif ($row['status'] == 'reserved'): ?>
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(255, 193, 7, 0.1); border-radius: 10px;">
+                        <?php if ($row['reserved_user_id']): ?>
+                            <p><strong><i class="fas fa-user-clock"></i> Đã cọc bởi:</strong> User ID <?php echo htmlspecialchars($row['reserved_user_id']); ?></p>
+                        <?php else: ?>
+                            <p><strong><i class="fas fa-user-clock"></i> Trạng thái:</strong> Đã cọc (chưa có thông tin người cọc)</p>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <a href="edit_room.php?id=<?php echo $row['id']; ?>" class="btn" style="flex: 1; text-align: center; padding: 0.5rem;">
+                        <i class="fas fa-edit"></i> Sửa
+                    </a>
+                    <a href="dashboard.php?delete_room=<?php echo $row['id']; ?>" 
+                       class="btn btn-danger" 
+                       style="flex: 1; text-align: center; padding: 0.5rem;"
+                       onclick="return confirmDelete('Bạn có chắc chắn muốn xóa phòng này?')">
+                        <i class="fas fa-trash"></i> Xóa
+                    </a>
+                </div>
+            </div>
+            <?php
+        }
+    } else {
+        ?>
+        <div class="card" style="grid-column: 1 / -1;">
+            <div style="text-align:center; color:#666; padding: 1rem;">Không có phòng để hiển thị.</div>
+        </div>
+        <?php
+    }
+    exit();
+}
+
 $page_title = "Dashboard Admin";
 require_once 'includes/header.php';
 
@@ -47,8 +164,28 @@ $stats['occupied_rooms'] = $conn->query("SELECT COUNT(*) as count FROM rooms WHE
 $stats['reserved_rooms'] = $conn->query("SELECT COUNT(*) as count FROM rooms WHERE status = 'reserved'")->fetch_assoc()['count'];
 $stats['total_users'] = $conn->query("SELECT COUNT(*) as count FROM users WHERE role = 'guest'")->fetch_assoc()['count'];
 $stats['unpaid_bills'] = $conn->query("SELECT COUNT(*) as count FROM bills WHERE status = 'unpaid'")->fetch_assoc()['count'];
+$stats['repairing_rooms'] = $conn->query("SELECT COUNT(*) as count FROM rooms WHERE status = 'repairing'")->fetch_assoc()['count'];
+// Count both legacy 'maintence' and correct 'maintenance'
+$stats['maintenance_rooms'] = $conn->query("SELECT COUNT(*) as count FROM rooms WHERE status IN ('maintenance','maintence')")->fetch_assoc()['count'];
 
-// Lấy danh sách phòng và thông tin người thuê (nếu có)
+// Lấy danh sách phòng và thông tin người thuê (nếu có) + bộ lọc trạng thái
+$allowed_statuses = ['available','occupied','reserved','repairing','maintenance','maintence'];
+$room_status_filter = isset($_GET['room_status']) ? strtolower(trim($_GET['room_status'])) : '';
+if (!in_array($room_status_filter, $allowed_statuses)) {
+    if ($room_status_filter !== '' && $room_status_filter !== 'all') {
+        $room_status_filter = '';
+    }
+}
+
+$where_status_sql = '';
+if ($room_status_filter && $room_status_filter !== 'all') {
+    if ($room_status_filter === 'maintenance' || $room_status_filter === 'maintence') {
+        $where_status_sql = "WHERE r.status IN ('maintenance','maintence')";
+    } else {
+        $where_status_sql = "WHERE r.status = '" . $conn->real_escape_string($room_status_filter) . "'";
+    }
+}
+
 $sql_rooms = "SELECT 
     r.*, u.full_name,
     p.user_id, 
@@ -65,10 +202,88 @@ LEFT JOIN users u ON u.id = p.user_id
 LEFT JOIN electricity_readings er ON r.id = er.room_id AND er.id = (
     SELECT MAX(id) FROM electricity_readings WHERE room_id = r.id
 )
-ORDER BY r.room_number ASC";
+" . ($where_status_sql ? $where_status_sql . "\n" : '') . "ORDER BY r.room_number ASC";
 $rooms_result = $conn->query($sql_rooms);
 if ($rooms_result === false) {
     $_SESSION['error_message'] = 'Lỗi truy vấn danh sách phòng: ' . $conn->error;
+}
+
+// Trả về phần danh sách phòng (partial) khi gọi AJAX
+if (isset($_GET['partial']) && $_GET['partial'] === 'rooms') {
+    ob_start();
+    if ($rooms_result && $rooms_result->num_rows > 0) {
+        while($row = $rooms_result->fetch_assoc()) {
+            $statusKey = $row['status'] === 'maintence' ? 'maintenance' : $row['status'];
+            ?>
+            <div class="room-card">
+                <div class="room-number">Phòng <?php echo htmlspecialchars($row['room_number']); ?></div>
+                <div class="room-price"><?php echo number_format($row['rent_price']); ?> VND/tháng</div>
+                <div class="room-description"><?php echo htmlspecialchars($row['description']); ?></div>
+                <div class="room-status status-<?php echo $statusKey; ?>">
+                    <?php 
+                        $status_text = [
+                            'available' => 'Trống',
+                            'occupied' => 'Đã thuê',
+                            'reserved' => 'Đã cọc',
+                            'repairing' => 'Đang sửa chữa',
+                            'maintenance' => 'Cần bảo trì',
+                            'maintence' => 'Cần bảo trì'
+                        ];
+                        echo $status_text[$statusKey] ?? htmlspecialchars($statusKey);
+                    ?>
+                </div>
+                <?php if ($row['status'] == 'occupied'): ?>
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(40, 167, 69, 0.1); border-radius: 10px;">
+                        <?php if ($row['user_id'] && $row['user_id'] != 0): ?>
+                            <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> <?php echo htmlspecialchars($row['full_name']); ?></p>
+                        <?php else: ?>
+                            <p><strong><i class="fas fa-user"></i> Thuê bởi:</strong> Admin (không có thông tin user)</p>
+                        <?php endif; ?>
+                        <?php if ($row['contract_duration']): ?>
+                            <p><strong><i class="fas fa-calendar"></i> Thời hạn:</strong> <?php echo htmlspecialchars($row['contract_duration']); ?> tháng</p>
+                        <?php endif; ?>
+                        <?php if ($row['start_date']): ?>
+                            <p><strong><i class="fas fa-calendar-check"></i> Ngày nhận:</strong> <?php echo htmlspecialchars($row['start_date']); ?></p>
+                        <?php endif; ?>
+                        <?php if ($row['reading_date']): ?>
+                            <p><strong><i class="fas fa-bolt"></i> Điện:</strong> <?php echo htmlspecialchars($row['old_reading']); ?> → <?php echo htmlspecialchars($row['new_reading']); ?></p>
+                            <p><strong><i class="fas fa-calendar"></i> Ngày ghi:</strong> <?php echo htmlspecialchars($row['reading_date']); ?></p>
+                        <?php else: ?>
+                            <p><i class="fas fa-exclamation-triangle"></i> Chưa có thông tin điện</p>
+                        <?php endif; ?>
+                    </div>
+                <?php elseif ($row['status'] == 'reserved'): ?>
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(255, 193, 7, 0.1); border-radius: 10px;">
+                        <?php if ($row['reserved_user_id']): ?>
+                            <p><strong><i class="fas fa-user-clock"></i> Đã cọc bởi:</strong> User ID <?php echo htmlspecialchars($row['reserved_user_id']); ?></p>
+                        <?php else: ?>
+                            <p><strong><i class="fas fa-user-clock"></i> Trạng thái:</strong> Đã cọc (chưa có thông tin người cọc)</p>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <a href="edit_room.php?id=<?php echo $row['id']; ?>" class="btn" style="flex: 1; text-align: center; padding: 0.5rem;">
+                        <i class="fas fa-edit"></i> Sửa
+                    </a>
+                    <a href="dashboard.php?delete_room=<?php echo $row['id']; ?>" 
+                       class="btn btn-danger" 
+                       style="flex: 1; text-align: center; padding: 0.5rem;"
+                       onclick="return confirmDelete('Bạn có chắc chắn muốn xóa phòng này?')">
+                        <i class="fas fa-trash"></i> Xóa
+                    </a>
+                </div>
+            </div>
+            <?php
+        }
+    } else {
+        ?>
+        <div class="card" style="grid-column: 1 / -1;">
+            <div style="text-align:center; color:#666; padding: 1rem;">Không có phòng để hiển thị.</div>
+        </div>
+        <?php
+    }
+    echo ob_get_clean();
+    exit();
 }
 
 // Lấy danh sách người dùng
@@ -193,6 +408,14 @@ if ($filter_month && $filter_year) {
         <div class="stat-label"><i class="fas fa-clock"></i> Phòng đã cọc</div>
     </div>
     <div class="stat-card">
+        <div class="stat-number"><?php echo $stats['repairing_rooms']; ?></div>
+        <div class="stat-label"><i class="fas fa-tools"></i> Đang sửa chữa</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number"><?php echo $stats['maintenance_rooms']; ?></div>
+        <div class="stat-label"><i class="fas fa-wrench"></i> Cần bảo trì</div>
+    </div>
+    <div class="stat-card">
         <div class="stat-number"><?php echo $stats['total_users']; ?></div>
         <div class="stat-label"><i class="fas fa-users"></i> Khách hàng</div>
     </div>
@@ -242,6 +465,24 @@ if ($filter_month && $filter_year) {
     
 <div class="card">
     <h3><i class="fas fa-list"></i> Danh sách phòng</h3>
+    <form id="roomFilterForm" method="GET" action="dashboard.php" style="margin: 1rem 0; display: flex; gap: 1rem; align-items: end;">
+        <div class="form-group">
+            <label for="room_status"><i class="fas fa-filter"></i> Lọc theo trạng thái</label>
+            <select id="room_status" name="room_status" class="form-control">
+                <?php $selected = function($v) use ($room_status_filter) { return ($room_status_filter === $v || ($v==='all' && ($room_status_filter===''||$room_status_filter==='all'))) ? 'selected' : ''; }; ?>
+                <option value="all" <?php echo $selected('all'); ?>>Tất cả</option>
+                <option value="available" <?php echo $selected('available'); ?>>Trống</option>
+                <option value="reserved" <?php echo $selected('reserved'); ?>>Đã cọc</option>
+                <option value="occupied" <?php echo $selected('occupied'); ?>>Đã thuê</option>
+                <option value="repairing" <?php echo $selected('repairing'); ?>>Đang sửa chữa</option>
+                <option value="maintenance" <?php echo ($room_status_filter==='maintenance'||$room_status_filter==='maintence')?'selected':''; ?>>Cần bảo trì</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Lọc</button>
+            <a href="dashboard.php" id="clearRoomFilter" class="btn" style="margin-left: 0.5rem;"><i class="fas fa-times"></i> Xóa lọc</a>
+        </div>
+    </form>
     <div class="room-grid">
         <?php if ($rooms_result && $rooms_result->num_rows > 0): ?>
         <?php while($row = $rooms_result->fetch_assoc()): ?>
@@ -250,16 +491,20 @@ if ($filter_month && $filter_year) {
                 <div class="room-price"><?php echo number_format($row['rent_price']); ?> VND/tháng</div>
                 <div class="room-description"><?php echo htmlspecialchars($row['description']); ?></div>
                 
-                <div class="room-status status-<?php echo $row['status']; ?>">
+                <?php 
+                    $statusKey = $row['status'] === 'maintence' ? 'maintenance' : $row['status'];
+                ?>
+                <div class="room-status status-<?php echo $statusKey; ?>">
                     <?php 
                     $status_text = [
                         'available' => 'Trống',
                         'occupied' => 'Đã thuê',
                         'reserved' => 'Đã cọc',
                         'repairing' => 'Đang sửa chữa',
-                        'maintenance' => 'Cần sửa chữa'
+                        'maintenance' => 'Cần bảo trì',
+                        'maintence' => 'Cần bảo trì'
                     ];
-                    echo $status_text[$row['status']];
+                    echo $status_text[$statusKey] ?? htmlspecialchars($statusKey);
                     ?>
                 </div>
                 
@@ -415,6 +660,71 @@ if ($filter_month && $filter_year) {
         function confirmDelete(message) {
             return confirm(message);
         }
+    </script>
+    <script>
+        // AJAX filter for room list
+        document.addEventListener('DOMContentLoaded', function() {
+            var form = document.getElementById('roomFilterForm');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    // Prevent global form submit handler (in footer) from setting sticky loading state
+                    if (e.stopPropagation) e.stopPropagation();
+                    var status = document.getElementById('room_status').value || 'all';
+                    var url = 'dashboard.php?partial=rooms' + (status && status !== 'all' ? ('&room_status=' + encodeURIComponent(status)) : '');
+                    // Manage local loading state on the submit button
+                    var submitBtn = form.querySelector('button[type="submit"]');
+                    var originalHtml = submitBtn ? submitBtn.innerHTML : '';
+                    if (submitBtn) {
+                        submitBtn.innerHTML = '<span class="loading"></span> Đang xử lý...';
+                        submitBtn.disabled = true;
+                    }
+                    
+                    var xhr = new XMLHttpRequest();
+                    xhr.onreadystatechange = function() {
+                        if (this.readyState === 4 && this.status === 200) {
+                            var grid = form.parentElement.querySelector('.room-grid');
+                            if (grid) {
+                                grid.innerHTML = this.responseText;
+                            }
+                            if (submitBtn) {
+                                submitBtn.disabled = false;
+                                submitBtn.innerHTML = originalHtml;
+                            }
+                        } else if (this.readyState === 4) {
+                            // Error case: restore button state even on failure
+                            if (submitBtn) {
+                                submitBtn.disabled = false;
+                                submitBtn.innerHTML = originalHtml;
+                            }
+                        }
+                    };
+                    xhr.open('GET', url, true);
+                    xhr.send();
+                });
+            }
+
+            var clearBtn = document.getElementById('clearRoomFilter');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var url = 'dashboard.php?partial=rooms';
+                    var xhr = new XMLHttpRequest();
+                    xhr.onreadystatechange = function() {
+                        if (this.readyState === 4 && this.status === 200) {
+                            var grid = form.parentElement.querySelector('.room-grid');
+                            if (grid) {
+                                grid.innerHTML = this.responseText;
+                            }
+                            var select = document.getElementById('room_status');
+                            if (select) { select.value = 'all'; }
+                        }
+                    };
+                    xhr.open('GET', url, true);
+                    xhr.send();
+                });
+            }
+        });
     </script>
 
 <?php require_once 'includes/footer.php'; ?>

@@ -359,6 +359,12 @@ body {
     color: #6c757d;
 }
 
+/* Legacy alias for typo 'maintence' */
+.status-maintence {
+    background: rgba(108, 117, 125, 0.1);
+    color: #6c757d;
+}
+
 /* Alerts */
 .alert {
     padding: 1rem 1.5rem;

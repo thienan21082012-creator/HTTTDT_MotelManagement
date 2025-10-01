@@ -64,7 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['room_id'])) {
             'orderInfo' => $orderInfo,
             'paymentType' => 'reservation',
             'roomId' => $room_id,
-            'userId' => $user_id
+            'userId' => $user_id,
+            'roomIds' => [$room_id]
         ];
 
         header('Location: momo_payment_form.php');

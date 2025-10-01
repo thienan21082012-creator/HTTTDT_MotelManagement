@@ -34,6 +34,15 @@ $_SESSION['momo_payment']['orderId'] = $orderId;
 $_SESSION['momo_payment']['amount'] = $amount;
 $_SESSION['momo_payment']['paymentMethod'] = $paymentMethod;
 
+// Support extraData for multi-reservation: encode roomIds from session if present
+$extraData = "";
+if (isset($_SESSION['momo_payment']['paymentType']) && in_array($_SESSION['momo_payment']['paymentType'], ['reservation_multi','reservation'])) {
+    $roomIds = isset($_SESSION['momo_payment']['roomIds']) ? (array)$_SESSION['momo_payment']['roomIds'] : [];
+    $userIdForExtra = isset($_SESSION['momo_payment']['userId']) ? (int)$_SESSION['momo_payment']['userId'] : 0;
+    $extraPayload = ['userId' => $userIdForExtra, 'roomIds' => array_values(array_map('intval', $roomIds))];
+    $extraData = base64_encode(json_encode($extraPayload));
+}
+
 if ($paymentMethod === 'vnpay') {
     // --- VNPay Payment Logic ---
     
@@ -103,7 +112,7 @@ if ($paymentMethod === 'vnpay') {
     
     $redirectUrl = getMomoRedirectUrl();
     $ipnUrl = getMomoIpnUrl();
-    $extraData = "";
+    // use computed $extraData above
     $requestId = time() . "";
     
     // Choose requestType based on user's selection

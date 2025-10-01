@@ -67,7 +67,8 @@ try {
         'orderInfo' => $orderInfo,
         'paymentType' => 'reservation',
         'roomId' => $room_id,
-        'userId' => $user_id
+        'userId' => $user_id,
+        'roomIds' => [$room_id]
     ];
     
     // Redirect to MoMo payment page

@@ -26,6 +26,8 @@ if (isset($_GET['resultCode'])) { // MoMo
     if ($paymentType === 'bill') {
         $billId = $orderParts[1] ?? '';
         $userId = $orderParts[2] ?? '';
+    } elseif ($paymentType === 'reservation_multi') {
+        $userId = $orderParts[1] ?? '';
     } else {
         $roomId = $orderParts[1] ?? '';
         $userId = $orderParts[2] ?? '';
@@ -55,9 +57,24 @@ if (isset($_GET['resultCode'])) { // MoMo
 
         $orderParts = explode('_', $orderId);
         $paymentType = $orderParts[0] ?? '';
+        $isSplitMulti = false;
+        if ($paymentType === 'reservation' && ($orderParts[1] ?? '') === 'multi') {
+            $paymentType = 'reservation_multi';
+            $isSplitMulti = true;
+        }
         if ($paymentType === 'bill') {
             $billId = $orderParts[1] ?? '';
             $userId = $orderParts[2] ?? '';
+        } elseif ($paymentType === 'reservation_multi') {
+            // reservation_multi formats:
+            // - reservation_multi_{userId}_{idsSegment}_{ts}
+            // - reservation_multi_{userId}_{ts}
+            // - reservation, multi, {userId}, {idsSegment}, {ts}
+            if ($isSplitMulti) {
+                $userId = $orderParts[2] ?? '';
+            } else {
+                $userId = $orderParts[1] ?? '';
+            }
         } else {
             $roomId = $orderParts[1] ?? '';
             $userId = $orderParts[2] ?? '';
@@ -89,6 +106,9 @@ if ($roomId) {
 if ($resultCode === 0) {
     try {
         $conn->begin_transaction();
+        $updatedReservations = 0;
+        $updatedRooms = 0;
+        $deletedCarts = 0;
         
         // Handle Reservation Payment
         if ($paymentType === 'reservation') {
@@ -97,19 +117,113 @@ if ($resultCode === 0) {
             $upd_res_stmt = $conn->prepare($upd_res_sql);
             $upd_res_stmt->bind_param("ii", $userId, $roomId);
             $upd_res_stmt->execute();
+            $updatedReservations += $upd_res_stmt->affected_rows;
 
             // Update room status to 'reserved' if it was 'available'
             $upd_room_sql = "UPDATE rooms SET status = 'reserved' WHERE id = ? AND status = 'available'";
             $upd_room_stmt = $conn->prepare($upd_room_sql);
             $upd_room_stmt->bind_param("i", $roomId);
             $upd_room_stmt->execute();
+            $updatedRooms += $upd_room_stmt->affected_rows;
 
             // Remove room from user's cart
             $del_cart_sql = "DELETE FROM carts WHERE user_id = ? AND room_id = ?";
             $del_cart_stmt = $conn->prepare($del_cart_sql);
             $del_cart_stmt->bind_param("ii", $userId, $roomId);
             $del_cart_stmt->execute();
+            $deletedCarts += $del_cart_stmt->affected_rows;
 
+        } elseif ($paymentType === 'reservation_multi') {
+            // Prefer extraData roomIds when available (MoMo redirect may include it)
+            $roomIds = [];
+            if (isset($_GET['extraData']) && $_GET['extraData'] !== '') {
+                $decoded = json_decode(base64_decode($_GET['extraData']), true);
+                if (isset($decoded['userId']) && (int)$decoded['userId'] > 0) {
+                    $userId = (int)$decoded['userId'];
+                }
+                if (isset($decoded['roomIds']) && is_array($decoded['roomIds'])) {
+                    $roomIds = array_map('intval', $decoded['roomIds']);
+                }
+            }
+
+            if (empty($roomIds)) {
+                // Fallback: update all user's pending reservations
+                if ($stmt = $conn->prepare("SELECT room_id FROM reservations WHERE user_id = ? AND status = 'pending'")) {
+                    $stmt->bind_param('i', $userId);
+                    $stmt->execute();
+                    $rs = $stmt->get_result();
+                    while ($r = $rs->fetch_assoc()) { $roomIds[] = (int)$r['room_id']; }
+                }
+            }
+
+            if (empty($roomIds)) {
+                // Additional fallback: rooms in user's cart
+                if ($stmt2 = $conn->prepare("SELECT room_id FROM carts WHERE user_id = ?")) {
+                    $stmt2->bind_param('i', $userId);
+                    $stmt2->execute();
+                    $rs2 = $stmt2->get_result();
+                    while ($r2 = $rs2->fetch_assoc()) { $roomIds[] = (int)$r2['room_id']; }
+                }
+            }
+
+            if (empty($roomIds) && isset($orderId)) {
+                // Parse ids embedded in orderId
+                $parts = explode('_', $orderId);
+                if ($isSplitMulti) {
+                    if (count($parts) >= 5) {
+                        $idsSegment = $parts[3];
+                        foreach (explode('-', $idsSegment) as $ridStr) {
+                            $rid = (int)$ridStr;
+                            if ($rid > 0) { $roomIds[] = $rid; }
+                        }
+                    }
+                } else {
+                    if (count($parts) >= 4) {
+                        $idsSegment = $parts[2];
+                        foreach (explode('-', $idsSegment) as $ridStr) {
+                            $rid = (int)$ridStr;
+                            if ($rid > 0) { $roomIds[] = $rid; }
+                        }
+                    }
+                }
+            }
+
+            if (empty($roomIds) && isset($_SESSION['momo_payment']) && isset($_SESSION['momo_payment']['roomIds'])) {
+                // Final fallback: session conversation
+                $sessionRooms = (array)$_SESSION['momo_payment']['roomIds'];
+                $roomIds = array_values(array_unique(array_map('intval', $sessionRooms)));
+                if (isset($_SESSION['momo_payment']['userId']) && (int)$_SESSION['momo_payment']['userId'] > 0) {
+                    $userId = (int)$_SESSION['momo_payment']['userId'];
+                }
+            }
+
+            if (!empty($roomIds)) {
+            foreach ($roomIds as $rid) {
+                    if ($upd_res_stmt = $conn->prepare("UPDATE reservations SET status = 'paid' WHERE user_id = ? AND room_id = ? AND status = 'pending'")) {
+                        $upd_res_stmt->bind_param('ii', $userId, $rid);
+                    $upd_res_stmt->execute();
+                    $updatedReservations += $upd_res_stmt->affected_rows;
+                    }
+
+                    if ($upd_room_stmt = $conn->prepare("UPDATE rooms SET status = 'reserved' WHERE id = ? AND status = 'available'")) {
+                        $upd_room_stmt->bind_param('i', $rid);
+                    $upd_room_stmt->execute();
+                    $updatedRooms += $upd_room_stmt->affected_rows;
+                    }
+
+                    if ($del_cart_stmt = $conn->prepare("DELETE FROM carts WHERE user_id = ? AND room_id = ?")) {
+                        $del_cart_stmt->bind_param('ii', $userId, $rid);
+                    $del_cart_stmt->execute();
+                    $deletedCarts += $del_cart_stmt->affected_rows;
+                    }
+                }
+            } else {
+                if ($stmtAll = $conn->prepare("UPDATE reservations SET status = 'paid' WHERE user_id = ? AND status = 'pending'")) {
+                    $stmtAll->bind_param('i', $userId);
+                    $stmtAll->execute();
+                }
+                $conn->query("DELETE c FROM carts c JOIN reservations r ON r.user_id = c.user_id AND r.room_id = c.room_id AND r.status = 'paid' WHERE c.user_id = " . (int)$userId);
+            }
         } elseif ($paymentType === 'deposit') {
             // Handle Deposit Payment
             // Update payment record to 'completed'
@@ -139,6 +253,12 @@ if ($resultCode === 0) {
         }
 
         $conn->commit();
+        // Expose debug counters to UI for local debugging
+        $success_debug = [
+            'updated_reservations' => $updatedReservations,
+            'updated_rooms' => $updatedRooms,
+            'deleted_carts' => $deletedCarts
+        ];
     } catch (Throwable $e) {
         if ($conn && $conn->errno === 0) {
             @$conn->rollback();
@@ -185,6 +305,19 @@ if ($resultCode === 0) {
                 <strong>Thanh toán hóa đơn thành công!</strong><br>
                 Hóa đơn của bạn đã được thanh toán.
             </div>
+        <?php elseif ($paymentType === 'reservation_multi'): ?>
+            <div class="alert alert-info">
+                <i class="fas fa-calendar-check"></i>
+                <strong>Đặt chỗ nhiều phòng thành công!</strong>
+            </div>
+            <?php if (isset($success_debug)): ?>
+                <div class="alert alert-info" style="font-size: 0.9rem;">
+                    <div><strong>Debug (local):</strong></div>
+                    <div>Cập nhật reservations: <?php echo (int)$success_debug['updated_reservations']; ?></div>
+                    <div>Chuyển rooms→reserved: <?php echo (int)$success_debug['updated_rooms']; ?></div>
+                    <div>Xóa carts: <?php echo (int)$success_debug['deleted_carts']; ?></div>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
         
     <?php else: ?>

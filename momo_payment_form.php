@@ -83,7 +83,6 @@ if ($paymentType === 'bill' && $billId) {
                     </div>
                     <span style="background: #28a745; color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem;">Khuyến nghị</span>
                 </label>
-                
                 <!-- ATM Card -->
                 <label style="display: flex; align-items: center; margin: 0.5rem 0; padding: 0.75rem; border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#007bff'; this.style.background='rgba(0, 123, 255, 0.05)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.background='transparent';">
                     <input type="radio" name="method" value="atm" style="margin-right: 0.5rem;">
@@ -103,7 +102,7 @@ if ($paymentType === 'bill' && $billId) {
                         <div style="font-size: 0.85rem; color: #666; margin-top: 0.25rem;">Thanh toán qua thẻ tín dụng/ghi nợ quốc tế</div>
                     </div>
                 </label>
-
+                
                 <!-- VNPay -->
                 <label style="display: flex; align-items: center; margin: 0.5rem 0; padding: 0.75rem; border: 2px solid #e0e0e0; border-radius: 10px; cursor: pointer; transition: all 0.3s;" onmouseover="this.style.borderColor='#0088cc'; this.style.background='rgba(0, 136, 204, 0.05)';" onmouseout="this.style.borderColor='#e0e0e0'; this.style.background='transparent';">
                     <input type="radio" name="method" value="vnpay" style="margin-right: 0.5rem;">

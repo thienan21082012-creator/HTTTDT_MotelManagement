@@ -67,6 +67,11 @@ $result = $stmt->get_result();
             <a href="view_rooms.php" class="btn btn-secondary" style="flex: 1; text-align: center;">
                 <i class="fas fa-plus"></i> Thêm phòng khác
             </a>
+            <form action="checkout_all.php" method="POST" style="flex: 1;">
+                <button type="submit" class="btn btn-success" style="width: 100%;">
+                    <i class="fas fa-layer-group"></i> Giữ chỗ tất cả
+                </button>
+            </form>
         </div>
     </div>
 <?php else: ?>
